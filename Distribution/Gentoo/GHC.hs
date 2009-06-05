@@ -14,17 +14,22 @@ import Distribution.InstalledPackageInfo
 import Data.Char(isDigit)
 import Data.Maybe(fromJust)
 import System.FilePath
+import System.Directory
 import Control.Monad(liftM)
 
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
 rawSysStdOutLine app = liftM (head . lines) . rawSystemStdout silent app
 
+ghcRawOut      :: [String] -> IO String
+ghcRawOut args = do (Just ghc) <- findExecutable "ghc"
+                    rawSysStdOutLine ghc args
+
 ghcVersion :: IO String
 ghcVersion = liftM (dropWhile (not . isDigit))
-             $ rawSysStdOutLine "ghc" ["--version"]
+             $ ghcRawOut ["--version"]
 
 ghcLibDir :: IO String
-ghcLibDir = liftM takeDirectory $ rawSysStdOutLine "ghc" ["--print-libdir"]
+ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
 
 configureGHC = configure silent Nothing Nothing defaultProgramConfiguration
 
