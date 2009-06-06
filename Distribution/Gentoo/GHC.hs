@@ -12,10 +12,11 @@ import Distribution.Package
 import Distribution.InstalledPackageInfo
 
 import Data.Char(isDigit)
+import Data.List(delete,nub,isPrefixOf)
 import Data.Maybe(fromJust)
 import System.FilePath
 import System.Directory
-import Control.Monad(liftM)
+import Control.Monad
 
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
 rawSysStdOutLine app = liftM (head . lines) . rawSystemStdout silent app
@@ -30,6 +31,28 @@ ghcVersion = liftM (dropWhile (not . isDigit))
 
 ghcLibDir :: IO String
 ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
+
+libFronts :: [FilePath]
+libFronts = do loc <- ["usr", "opt" </> "ghc"]
+               lib <- ["lib", "lib64"]
+               return $ "/" </> loc </> lib
+
+oldGhcLibDirs :: IO [FilePath]
+oldGhcLibDirs = do libDirs <- filterM doesDirectoryExist libFronts
+                   -- Remove symlinks, etc.
+                   canonLibs <- liftM nub $ mapM canonicalizePath libDirs
+                   ghcDirs <- liftM concat $ mapM getGHCdirs canonLibs
+                   thisLib <- ghcLibDir
+                   return $ delete thisLib ghcDirs
+  where
+    getGHCdirs     :: FilePath -> IO [FilePath]
+    getGHCdirs dir = do contents <- getDirectoryContents dir
+                        let ghcContents = map (dir </>)
+                                          -- ghc-paths isn't valid, so
+                                          -- remove it
+                                          . filter (not . isPrefixOf "ghc-paths")
+                                          $ filter (isPrefixOf "ghc") contents
+                        filterM doesDirectoryExist ghcContents
 
 configureGHC = configure silent Nothing Nothing defaultProgramConfiguration
 
@@ -56,6 +79,11 @@ pkgByName = do ind <- pkgIndex
                    pkgs' = map (\p -> (getName p, p)) pkgs
                return pkgs'
 
-pkgName nm = liftM (filter ((==) nm . fst)) pkgByName
+pkgName' nm = liftM (filter ((==) nm . fst)) pkgByName
 
 getName = drop 6 . (fromJust $ showInstalledPackageInfoField "name")
+
+{-
+getPkgName :: InstalledPackageInfo -> PackageName
+getPkgName = packageName
+-}
