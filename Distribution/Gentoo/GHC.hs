@@ -47,12 +47,16 @@ import Control.Monad(filterM, foldM, liftM)
 
 -- common helper utils, etc.
 
-rawSysStdOutLine     :: FilePath -> [String] -> IO String
-rawSysStdOutLine app = liftM (head . lines) . rawSystemStdout silent app
-
 concatMapM   :: (a -> IO [b]) -> [a] -> IO [b]
 concatMapM f = liftM concat . mapM f
 
+-- Get only the first line of output
+rawSysStdOutLine     :: FilePath -> [String] -> IO String
+rawSysStdOutLine app = liftM (head . lines) . rawSystemStdout silent app
+
+-- Get the first line of output from calling GHC with the given
+-- arguments.  Cheat with using (Just ...) since we know that GHC
+-- must be in $PATH somewhere, probably /usr/bin
 ghcRawOut      :: [String] -> IO String
 ghcRawOut args = do (Just ghc) <- findExecutable "ghc"
                     rawSysStdOutLine ghc args
@@ -64,6 +68,7 @@ ghcVersion = liftM (dropWhile (not . isDigit))
 ghcLibDir :: IO String
 ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
 
+-- Return the Gentoo .conf files found in this GHC libdir
 confFiles     :: FilePath -> IO [FilePath]
 confFiles dir = do let gDir = dir </> "gentoo"
                    exists <- doesDirectoryExist gDir
@@ -79,14 +84,17 @@ confFiles dir = do let gDir = dir </> "gentoo"
 
 -- Upgrading
 
+-- The list of .conf files from old GHC versions that have to be rebuilt
 rebuildConfFiles :: IO [FilePath]
 rebuildConfFiles = concatMapM confFiles =<< oldGhcLibDirs
 
+-- The possible places GHC could have installed lib directories
 libFronts :: [FilePath]
 libFronts = do loc <- ["usr", "opt" </> "ghc"]
                lib <- ["lib", "lib64"]
                return $ "/" </> loc </> lib
 
+-- Lib directories from old GHC versions
 oldGhcLibDirs :: IO [FilePath]
 oldGhcLibDirs = do libDirs <- filterM doesDirectoryExist libFronts
                    -- Remove symlinks, etc.
@@ -95,6 +103,7 @@ oldGhcLibDirs = do libDirs <- filterM doesDirectoryExist libFronts
                    thisLib <- ghcLibDir
                    return $ delete thisLib ghcDirs
 
+-- Find all lib directories from GHC in this possible lib directory
 getGHCdirs     :: FilePath -> IO [FilePath]
 getGHCdirs dir = do contents <- getDirectoryContents dir
                     let ghcDs = map (dir </>)
@@ -107,6 +116,7 @@ getGHCdirs dir = do contents <- getDirectoryContents dir
 
 -- Fixing
 
+-- .conf files from broken packages of this GHC version
 brokenConfs :: IO [FilePath]
 brokenConfs = do brkn <- getBroken
                  cnfs <- readConf
@@ -115,9 +125,12 @@ brokenConfs = do brkn <- getBroken
 
 type ConfMap = Map PackageName FilePath
 
+-- Read in all Gentoo .conf files from the current GHC version and
+-- create a Map
 readConf :: IO ConfMap
 readConf = ghcLibDir >>= confFiles >>= foldM addConf Map.empty
 
+-- Add this .conf file to the Map
 addConf          :: ConfMap -> FilePath -> IO ConfMap
 addConf cmp conf = do cnts <- readFile conf
                       case (reads cnts) of
@@ -134,13 +147,16 @@ addConf cmp conf = do cnts <- readFile conf
     cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageName
     cfNm = packageName . head . fst . head
 
+-- Obtain GHC info about installed libs, etc.
 configureGHC :: IO ProgramConfiguration
 configureGHC = liftM snd
                $ configure silent Nothing Nothing defaultProgramConfiguration
 
+-- Return all packages registered with GHC
 pkgIndex :: IO (PackageIndex InstalledPackageInfo)
-pkgIndex = do configureGHC >>= getInstalledPackages silent GlobalPackageDB
+pkgIndex = configureGHC >>= getInstalledPackages silent GlobalPackageDB
 
+-- Return the closure of all packages affected by breakage
 getBroken :: IO [PackageName]
 getBroken = do ind <- pkgIndex
                let broken = map (package . fst) $ brokenPackages ind
