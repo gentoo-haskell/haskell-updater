@@ -35,6 +35,9 @@ import Control.Monad
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
 rawSysStdOutLine app = liftM (head . lines) . rawSystemStdout silent app
 
+concatMapM   :: (a -> IO [b]) -> [a] -> IO [b]
+concatMapM f = liftM concat . mapM f
+
 ghcRawOut      :: [String] -> IO String
 ghcRawOut args = do (Just ghc) <- findExecutable "ghc"
                     rawSysStdOutLine ghc args
@@ -59,7 +62,7 @@ oldGhcLibDirs :: IO [FilePath]
 oldGhcLibDirs = do libDirs <- filterM doesDirectoryExist libFronts
                    -- Remove symlinks, etc.
                    canonLibs <- liftM nub $ mapM canonicalizePath libDirs
-                   ghcDirs <- liftM concat $ mapM getGHCdirs canonLibs
+                   ghcDirs <- concatMapM getGHCdirs canonLibs
                    thisLib <- ghcLibDir
                    return $ delete thisLib ghcDirs
 
