@@ -8,30 +8,40 @@
    This module defines helper functions to find broken packages in
    GHC, or else find packages installed with older versions of GHC.
  -}
-module Distribution.Gentoo.GHC where
+module Distribution.Gentoo.GHC
+       ( ghcVersion
+       , rebuildConfFiles
+       , brokenConfs
+       ) where
 
-import Distribution.Simple.PackageIndex(PackageIndex
-                                        ,brokenPackages
-                                        ,reverseDependencyClosure)
-import Distribution.Simple.GHC(getInstalledPackages,configure)
-import Distribution.Simple.Program(ProgramConfiguration
-                                  ,defaultProgramConfiguration)
+-- Cabal imports
+import Distribution.Simple.PackageIndex( PackageIndex
+                                        , brokenPackages
+                                        , reverseDependencyClosure)
+import Distribution.Simple.GHC(getInstalledPackages, configure)
+import Distribution.Simple.Program( ProgramConfiguration
+                                  , defaultProgramConfiguration)
 import Distribution.Simple.Compiler( PackageDB(GlobalPackageDB)
                                    , compilerVersion)
 import Distribution.Simple.Utils(rawSystemStdout)
 import Distribution.Verbosity(silent)
+import Distribution.Package(PackageName, packageName)
+import Distribution.InstalledPackageInfo( InstalledPackageInfo
+                                        , InstalledPackageInfo_
+                                        , package)
 
-import Distribution.Package
-import Distribution.InstalledPackageInfo
-
+-- Other imports
 import Data.Char(isDigit)
 import Data.List(delete,nub,isPrefixOf)
 import Data.Maybe(fromJust,catMaybes)
 import qualified Data.Map as Map
 import Data.Map(Map)
-import System.FilePath
-import System.Directory
-import Control.Monad
+import System.FilePath((</>), takeExtension)
+import System.Directory( canonicalizePath
+                       , doesDirectoryExist
+                       , findExecutable
+                       , getDirectoryContents)
+import Control.Monad(filterM, foldM, liftM)
 
 -- -----------------------------------------------------------------------------
 
