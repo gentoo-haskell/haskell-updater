@@ -49,9 +49,23 @@ ghcVersion = liftM (dropWhile (not . isDigit))
 ghcLibDir :: IO String
 ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
 
+confFiles     :: FilePath -> IO [FilePath]
+confFiles dir = do let gDir = dir </> "gentoo"
+                   exists <- doesDirectoryExist gDir
+                   if exists
+                     then do conts <- getDirectoryContents gDir
+                             return $ map (gDir </>)
+                               $ filter isConf conts
+                     else return []
+  where
+    isConf file = (takeExtension file) == ".conf"
+
 -- -----------------------------------------------------------------------------
 
 -- Upgrading
+
+rebuildConfFiles :: IO [FilePath]
+rebuildConfFiles = concatMapM confFiles =<< oldGhcLibDirs
 
 libFronts :: [FilePath]
 libFronts = do loc <- ["usr", "opt" </> "ghc"]
