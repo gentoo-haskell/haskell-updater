@@ -1,3 +1,13 @@
+{- |
+   Module      : Distribution.Gentoo.GHC
+   Description : Find GHC-related breakages on Gentoo.
+   Copyright   : (c) Ivan Lazar Miljenovic 2009
+   License     : GPL-2 or later
+   Maintainer  : Ivan.Miljenovic@gmail.com
+
+   This module defines helper functions to find broken packages in
+   GHC, or else find packages installed with older versions of GHC.
+ -}
 module Distribution.Gentoo.GHC where
 
 import Distribution.Simple.PackageIndex -- (brokenPackages)
@@ -18,6 +28,10 @@ import System.FilePath
 import System.Directory
 import Control.Monad
 
+-- -----------------------------------------------------------------------------
+
+-- common helper utils, etc.
+
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
 rawSysStdOutLine app = liftM (head . lines) . rawSystemStdout silent app
 
@@ -32,6 +46,10 @@ ghcVersion = liftM (dropWhile (not . isDigit))
 ghcLibDir :: IO String
 ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
 
+-- -----------------------------------------------------------------------------
+
+-- Upgrading
+
 libFronts :: [FilePath]
 libFronts = do loc <- ["usr", "opt" </> "ghc"]
                lib <- ["lib", "lib64"]
@@ -44,15 +62,18 @@ oldGhcLibDirs = do libDirs <- filterM doesDirectoryExist libFronts
                    ghcDirs <- liftM concat $ mapM getGHCdirs canonLibs
                    thisLib <- ghcLibDir
                    return $ delete thisLib ghcDirs
-  where
-    getGHCdirs     :: FilePath -> IO [FilePath]
-    getGHCdirs dir = do contents <- getDirectoryContents dir
-                        let ghcContents = map (dir </>)
-                                          -- ghc-paths isn't valid, so
-                                          -- remove it
-                                          . filter (not . isPrefixOf "ghc-paths")
-                                          $ filter (isPrefixOf "ghc") contents
-                        filterM doesDirectoryExist ghcContents
+
+getGHCdirs     :: FilePath -> IO [FilePath]
+getGHCdirs dir = do contents <- getDirectoryContents dir
+                    let ghcDs = map (dir </>)
+                                -- ghc-paths isn't valid, so remove it
+                                . filter (not . isPrefixOf "ghc-paths")
+                                $ filter (isPrefixOf "ghc") contents
+                    filterM doesDirectoryExist ghcDs
+
+-- -----------------------------------------------------------------------------
+
+-- Fixing
 
 configureGHC = configure silent Nothing Nothing defaultProgramConfiguration
 
