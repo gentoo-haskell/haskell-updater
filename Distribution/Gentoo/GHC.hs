@@ -10,9 +10,12 @@
  -}
 module Distribution.Gentoo.GHC where
 
-import Distribution.Simple.PackageIndex -- (brokenPackages)
+import Distribution.Simple.PackageIndex(PackageIndex
+                                        ,brokenPackages
+                                        ,reverseDependencyClosure)
 import Distribution.Simple.GHC(getInstalledPackages,configure)
-import Distribution.Simple.Program(defaultProgramConfiguration)
+import Distribution.Simple.Program(ProgramConfiguration
+                                  ,defaultProgramConfiguration)
 import Distribution.Simple.Compiler( PackageDB(GlobalPackageDB)
                                    , compilerVersion)
 import Distribution.Simple.Utils(rawSystemStdout)
@@ -23,7 +26,9 @@ import Distribution.InstalledPackageInfo
 
 import Data.Char(isDigit)
 import Data.List(delete,nub,isPrefixOf)
-import Data.Maybe(fromJust)
+import Data.Maybe(fromJust,catMaybes)
+import qualified Data.Map as Map
+import Data.Map(Map)
 import System.FilePath
 import System.Directory
 import Control.Monad
@@ -92,36 +97,41 @@ getGHCdirs dir = do contents <- getDirectoryContents dir
 
 -- Fixing
 
-configureGHC = configure silent Nothing Nothing defaultProgramConfiguration
+brokenConfs :: IO [FilePath]
+brokenConfs = do brkn <- getBroken
+                 cnfs <- readConf
+                 -- Need to think about what to do if PN \notin cnfs
+                 return $ catMaybes $ map (flip Map.lookup cnfs) brkn
+
+type ConfMap = Map PackageName FilePath
+
+readConf :: IO ConfMap
+readConf = ghcLibDir >>= confFiles >>= foldM addConf Map.empty
+
+addConf          :: ConfMap -> FilePath -> IO ConfMap
+addConf cmp conf = do cnts <- readFile conf
+                      case (reads cnts) of
+                        []       -> return cmp
+                        -- ebuilds that have CABAL_CORE_LIB_GHC_PV set
+                        -- for this version of GHC will have a .conf
+                        -- file containing just []
+                        [([],_)] -> return cmp
+                        rd       -> do let nm = cfNm rd
+                                       return $ Map.insert nm conf cmp
+
+  where
+    -- It's not InstalledPackageInfo, as it can't read the modules
+    cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageName
+    cfNm = packageName . head . fst . head
+
+configureGHC :: IO ProgramConfiguration
+configureGHC = liftM snd
+               $ configure silent Nothing Nothing defaultProgramConfiguration
 
 pkgIndex :: IO (PackageIndex InstalledPackageInfo)
-pkgIndex = do (_,conf) <- configureGHC
-              getInstalledPackages
-                silent
-                GlobalPackageDB
-                conf
+pkgIndex = do configureGHC >>= getInstalledPackages silent GlobalPackageDB
 
-getBroken :: IO [InstalledPackageInfo]
+getBroken :: IO [PackageName]
 getBroken = do ind <- pkgIndex
                let broken = map (package . fst) $ brokenPackages ind
-                   brokenClosure = reverseDependencyClosure ind broken
-               return brokenClosure
-
-printBroken :: IO ()
-printBroken = mapM_ (putStrLn . getName) =<< getBroken
-
-getBroken' = liftM (map getName) getBroken
-
-pkgByName = do ind <- pkgIndex
-               let pkgs = allPackages ind
-                   pkgs' = map (\p -> (getName p, p)) pkgs
-               return pkgs'
-
-pkgName' nm = liftM (filter ((==) nm . fst)) pkgByName
-
-getName = drop 6 . (fromJust $ showInstalledPackageInfoField "name")
-
-{-
-getPkgName :: InstalledPackageInfo -> PackageName
-getPkgName = packageName
--}
+               return $ map packageName $ reverseDependencyClosure ind broken
