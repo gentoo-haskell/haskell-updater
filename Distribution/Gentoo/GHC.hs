@@ -41,7 +41,7 @@ import System.Directory( canonicalizePath
                        , doesDirectoryExist
                        , findExecutable
                        , getDirectoryContents)
-import Control.Monad(filterM, foldM, liftM)
+import Control.Monad(filterM, foldM, liftM, when)
 
 -- -----------------------------------------------------------------------------
 
@@ -119,9 +119,13 @@ getGHCdirs dir = do contents <- getDirectoryContents dir
 -- .conf files from broken packages of this GHC version
 brokenConfs :: IO [FilePath]
 brokenConfs = do brkn <- getBroken
-                 cnfs <- readConf
-                 -- Need to think about what to do if PN \notin cnfs
-                 return $ catMaybes $ map (flip Map.lookup cnfs) brkn
+                 -- Check if we actually have to go look up files and
+                 -- do IO.
+                 if (null brkn)
+                   then return []
+                   else do cnfs <- readConf
+                           -- Need to think about what to do if PN \notin cnfs
+                           return $ catMaybes $ map (flip Map.lookup cnfs) brkn
 
 type ConfMap = Map PackageName FilePath
 
