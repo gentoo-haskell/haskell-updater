@@ -128,9 +128,9 @@ getAllGhcDirs = do
             | otherwise = False
         v = filter f cont
     forConcatM (map (libdir </>) v) $ \ghchome -> do
-      -- check that the ghchome dir has a ghc file
+      -- check that the ghchome dir has a gentoo directory
       -- this should exclude packages like ghc-paths
-      hasGHC <- doesFileExist (ghchome </> "ghc")
+      hasGHC <- doesDirectoryExist (ghchome </> "gentoo")
       return [ ghchome | hasGHC ]
   fmap nub $ mapM canonicalizePath paths
 
