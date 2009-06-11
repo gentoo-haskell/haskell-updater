@@ -124,7 +124,6 @@ getAllGhcDirs = do
   paths <- forConcatM libs $ \libdir -> do
     cont <- getDirectoryContents' libdir
     let f n | "ghc-" `isPrefixOf` n = True
-            -- | "ghc-bin-" `isPrefixOf` n = True
             | otherwise = False
         v = filter f cont
     forConcatM (map (libdir </>) v) $ \ghchome -> do
