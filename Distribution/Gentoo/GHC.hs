@@ -12,6 +12,7 @@ module Distribution.Gentoo.GHC
        ( ghcVersion
        , rebuildConfFiles
        , brokenConfs
+       , ghcLibDir
        ) where
 
 -- Cabal imports
