@@ -1,4 +1,4 @@
-module Main (module GHC) where
+module Main (module GHC, main) where
 
 {-
   Try to rebuild exact the same versions as before, or just the same slot?
@@ -10,6 +10,9 @@ import System.IO
 import Control.Monad (filterM,when)
 import Data.List
 import Data.Maybe
+
+-- introduces dep on package filepath
+import System.FilePath
 
 import Distribution.Gentoo.GHC as GHC
 
@@ -23,8 +26,7 @@ pkgDBDir = "/var/db/pkg"
 
 excludePkgs = [ "dev-lang/ghc", "dev-lang/ghc-bin" ]
 
--- pretty much the only thing we need from System.FilePath
-(</>) a b = a ++ '/' : b
+-- (</>) a b = a ++ '/' : b
 
 forM :: (Monad m) => [a] -> (a -> m b) -> m [b]
 forM = flip mapM
@@ -35,6 +37,9 @@ forConcatM lst f = return . concat =<< mapM f lst
 getDirectoryContents' dir = do
   is <- getDirectoryContents dir
   return $ (filter (`notElem` [".", ".."])) is
+
+getCurrentGhcLibPath = GHC.ghcLibDir
+getCurrentGhcVersion = GHC.ghcVersion
 
 {-
 data PkgInfo = PI {
@@ -47,16 +52,40 @@ data PkgInfo = PI {
 main :: IO ()
 main = do
   putStrLn "haskell updater!"
+  ghcVersion <- getCurrentGhcVersion
+  ghcLibDir <- getCurrentGhcLibPath
+
+  let knownGhcLibPath | "/usr/lib"     `isPrefixOf` ghcLibDir = True
+                      | "/opt/ghc/lib" `isPrefixOf` ghcLibDir = True
+                      | otherwise = False
+  
+  when (not knownGhcLibPath) $ do
+    putStrLn ""
+    putStrLn "[WARNING] Seems you're not using a Gentoo installation of GHC. Are you sure you want to continue?"
+    putStrLn $ "[WARNING] Your GHC's library directory is: "
+    putStrLn $ "[WARNING] " ++ ghcLibDir
+    putStrLn ""
+
+  putStr "Old GHC installations: "
+  allGhcDirs <- getAllGhcDirs
+  let oldGhcDirs = delete ghcLibDir allGhcDirs
+  if (null oldGhcDirs)
+    then putStrLn "none"
+    else do
+      putStrLn ""
+      mapM_ (\p -> putStrLn (" - " ++ p)) oldGhcDirs
+  putStrLn ""
+
   putStrLn "looking for packages from older ghc installations..."
   infos <- getPackageInfos
   let infos' = flip filter infos $ \(cat,pkg,_path) ->
-                   -- TODO: this check is no good, things could be postfixed
-                   -- the excluded package names. example dev-lang/ghc-foo
-                   any (cat </> pkg `isPrefixOf`) excludePkgs
+                   -- TODO: this check is no good, things could be appended
+                   -- to the names. example dev-lang/ghc-foo
+                   any ((cat </> pkg) `isPrefixOf`) excludePkgs
   putStrLn (show (length infos) ++ " packages to consider.")
-  ghcDirs <- getAllGhcDirs
+
   is <- forConcatM infos $ \pkginfo@(cat,ver,_) -> do
-    files <- hasFileInDirs (map BS.pack ghcDirs) pkginfo
+    files <- hasFileInDirs (map BS.pack oldGhcDirs) pkginfo
     let hasFiles = not . null $ files
     when hasFiles $ do
       putStrLn (" * found: " ++ (cat </> ver))
@@ -88,7 +117,7 @@ getAllGhcDirs = do
                 , bits <- [ "lib", "lib64" ]
                 ]
   libs <- filterM doesDirectoryExist libdirs
-  forConcatM libs $ \libdir -> do
+  paths <- forConcatM libs $ \libdir -> do
     cont <- getDirectoryContents' libdir
     let f n | "ghc-" `isPrefixOf` n = True
             -- | "ghc-bin-" `isPrefixOf` n = True
@@ -99,6 +128,7 @@ getAllGhcDirs = do
       -- this should exclude packages like ghc-paths
       hasGHC <- doesFileExist (ghchome </> "ghc")
       return [ ghchome | hasGHC ]
+  fmap nub $ mapM canonicalizePath paths
 
 getPackageInfos :: IO [(Category, Package, FilePath)]
 getPackageInfos = do
