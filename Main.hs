@@ -102,6 +102,7 @@ hasFileInDirs dirs (_,_,path) = do
     , d `BS.isPrefixOf` p
     ]
 
+-- |Read a CONTENTS file and return all files (not directories)
 readContents :: FilePath -> IO [BS.ByteString]
 readContents path = do
   let f x =
@@ -110,6 +111,9 @@ readContents path = do
           _ -> Nothing
   fmap (catMaybes . map f . map BS.words . BS.lines) $ BS.readFile path
 
+-- |Find all GHC dirs in common Gentoo installation paths.
+-- This will find both your current ghc version's library path, as well as
+-- all the previous ghc installations where the directory still exists.
 getAllGhcDirs :: IO [FilePath]
 getAllGhcDirs = do
   let libdirs = [ root </> bits 
