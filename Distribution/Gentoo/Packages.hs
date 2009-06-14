@@ -10,6 +10,8 @@
 -}
 module Distribution.Gentoo.Packages where
 
+import Distribution.Gentoo.Util
+
 import Data.List
 import Data.Maybe
 import System.Directory
@@ -41,6 +43,9 @@ pathOf (Obj obj) = obj
 
 pkgDBDir :: FilePath
 pkgDBDir = "/var/db/pkg"
+
+contents :: FilePath
+contents = "CONTENTS"
 
 getDirectoryContents'     :: FilePath -> IO [FilePath]
 getDirectoryContents' dir = do is <- getDirectoryContents dir
@@ -89,6 +94,26 @@ parseContents fp = do lns <- liftM BS.lines $ BS.readFile fp
 
     obj = BS.pack "obj"
     dir = BS.pack "dir"
+
+pkgsHaveContent   :: ([Content] -> Bool) -> IO [(Category, Package)]
+pkgsHaveContent p = do cats <- installedCats'
+                       concatMapM (catHasContent p) cats
+
+
+-- TODO: strip off version from Package
+catHasContent     :: ([Content] -> Bool) -> Category -> IO
+                     [(Category, Package)]
+catHasContent p c = do pkgs <- getDirectoryContents' cfp
+                       pkgs' <- filterM (hasContent p . (</>) cfp) pkgs
+                       return $ map ((,) c) pkgs'
+  where
+    cfp = pkgDBDir </> c
+
+hasContent      :: ([Content] -> Bool) -> FilePath -> IO Bool
+hasContent p fp = do cnts <- parseContents fpc
+                     return $ p cnts
+  where
+    fpc = fp </> contents
 
 hasContentMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
 hasContentMatching p = any p . map pathOf
