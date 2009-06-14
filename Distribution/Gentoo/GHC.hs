@@ -10,6 +10,7 @@
  -}
 module Distribution.Gentoo.GHC
        ( ghcVersion
+       , libFronts
        , rebuildConfFiles
        , brokenConfs
        , ghcLibDir
