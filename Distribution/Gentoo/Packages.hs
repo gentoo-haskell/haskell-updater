@@ -27,6 +27,18 @@ data Content =   Dir BSFilePath
                | Obj BSFilePath
                  deriving (Eq, Show)
 
+isDir         :: Content -> Bool
+isDir (Dir _) = True
+isDir _       = False
+
+isObj         :: Content -> Bool
+isObj (Obj _) = True
+isObj _       = False
+
+pathOf           :: Content -> BSFilePath
+pathOf (Dir dir) = dir
+pathOf (Obj obj) = obj
+
 pkgDBDir :: FilePath
 pkgDBDir = "/var/db/pkg"
 
@@ -77,3 +89,12 @@ parseContents fp = do lns <- liftM BS.lines $ BS.readFile fp
 
     obj = BS.pack "obj"
     dir = BS.pack "dir"
+
+hasContentMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
+hasContentMatching p = any p . map pathOf
+
+hasDirMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
+hasDirMatching p = hasContentMatching p . filter isDir
+
+hasObjMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
+hasObjMatching p = hasContentMatching p . filter isObj
