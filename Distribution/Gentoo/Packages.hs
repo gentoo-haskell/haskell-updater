@@ -48,9 +48,7 @@ getDirectoryContents' dir = do is <- getDirectoryContents dir
 
 isCat    :: String -> IO Bool
 isCat fp = do isD <- doesDirectoryExist (pkgDBDir </> fp)
-              return $ if isD
-                       then isCat' fp
-                       else False
+              return $ isD && isCat' fp
   where
     isCat' ('.':_) = False
     isCat' "world" = False
@@ -74,9 +72,11 @@ parseContents    :: FilePath -> IO [Content]
 parseContents fp = do lns <- liftM BS.lines $ BS.readFile fp
                       return $ catMaybes $ map (parseCLine . BS.words) lns
   where
+    -- Use unwords of list rather than taking next element because of
+    -- how spaces are represented in file names.
     parseCLine :: [ByteString] -> Maybe Content
     parseCLine (tp:ln)
-      | tp == dir = Just . Dir $ BS.unwords ln
+      | tp == dir = Just . Dir . BS.unwords $ ln
       | tp == obj = Just . Obj . BS.unwords $ dropLastTwo ln
       | otherwise = Nothing
     parseCLine [] = Nothing
