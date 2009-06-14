@@ -1,4 +1,4 @@
-module Main (module GHC, main) where
+module Main (module Gentoo, main) where
 
 {-
   Try to rebuild exact the same versions as before, or just the same slot?
@@ -14,15 +14,10 @@ import Data.Maybe
 -- introduces dep on package filepath
 import System.FilePath
 
-import Distribution.Gentoo.GHC as GHC
+import Distribution.Gentoo.GHC as Gentoo
+import Distribution.Gentoo.Packages as Gentoo
 
 import qualified Data.ByteString.Char8 as BS
-
-type Category = String
-type Package = String
-
-pkgDBDir :: FilePath
-pkgDBDir = "/var/db/pkg"
 
 excludePkgs = [ "dev-lang/ghc", "dev-lang/ghc-bin" ]
 
@@ -34,12 +29,9 @@ forM = flip mapM
 -- proved to be useful
 forConcatM lst f = return . concat =<< mapM f lst
 
-getDirectoryContents' dir = do
-  is <- getDirectoryContents dir
-  return $ (filter (`notElem` [".", ".."])) is
-
-getCurrentGhcLibPath = GHC.ghcLibDir
-getCurrentGhcVersion = GHC.ghcVersion
+getCurrentGhcLibPath = Gentoo.ghcLibDir
+getCurrentGhcVersion = Gentoo.ghcVersion
+readContents = Gentoo.parseContents
 
 {-
 data PkgInfo = PI {
@@ -94,22 +86,13 @@ main = do
 
 hasFileInDirs :: [BS.ByteString] -> (Category, Package, FilePath) -> IO [BS.ByteString]
 hasFileInDirs dirs (_,_,path) = do
-  files <- readContents (path </> "CONTENTS")
+  entries <- readContents (path </> "CONTENTS")
   return
     [ p 
-    | p <- files
+    | (Obj p) <- entries
     , d <- dirs
     , d `BS.isPrefixOf` p
     ]
-
--- |Read a CONTENTS file and return all files (not directories)
-readContents :: FilePath -> IO [BS.ByteString]
-readContents path = do
-  let f x =
-        case x of
-          [kind, file, _hash, _size] | kind == BS.pack "obj" -> Just file
-          _ -> Nothing
-  fmap (catMaybes . map f . map BS.words . BS.lines) $ BS.readFile path
 
 -- |Find all GHC dirs in common Gentoo installation paths.
 -- This will find both your current ghc version's library path, as well as
