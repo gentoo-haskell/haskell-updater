@@ -16,6 +16,8 @@ module Distribution.Gentoo.GHC
        , ghcLibDir
        ) where
 
+import Distribution.Gentoo.Util
+
 -- Cabal imports
 import Distribution.Simple.PackageIndex( PackageIndex
                                         , brokenPackages
@@ -48,9 +50,6 @@ import Control.Monad(filterM, foldM, liftM, when)
 -- -----------------------------------------------------------------------------
 
 -- common helper utils, etc.
-
-concatMapM   :: (a -> IO [b]) -> [a] -> IO [b]
-concatMapM f = liftM concat . mapM f
 
 -- Get only the first line of output
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
