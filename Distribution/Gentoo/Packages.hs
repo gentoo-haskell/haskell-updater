@@ -87,11 +87,8 @@ catHasContent p c = do inDir <- getDirectoryContents' cfp
     cfp = pkgDBDir </> c
     withDir f x = f $ cfp </> x
 
-hasContent      :: ([Content] -> Bool) -> FilePath -> IO Bool
-hasContent p fp = do cnts <- parseContents fpc
-                     return $ p cnts
-  where
-    fpc = fp </> contents
+hasContent   :: ([Content] -> Bool) -> FilePath -> IO Bool
+hasContent p = liftM p . parseContents
 
 parseContents    :: FilePath -> IO [Content]
 parseContents cp = do ex <- doesFileExist cFile
