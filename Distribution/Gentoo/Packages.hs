@@ -67,17 +67,43 @@ installedCats = filterM isCat =<< getDirectoryContents' pkgDBDir
 -- first in our list.
 installedCats' :: IO [Category]
 installedCats' = do cats <- installedCats
-                    -- technically, we don't know if dev-haskell is
-                    -- indeed being used; however, this package will
-                    -- be in that category...
-                    return $ haskCat : delete haskCat cats
+                    let cats' = if haskCat `elem` cats
+                                then haskCat : delete haskCat cats
+                                else cats
+                    return cats'
   where
     haskCat = "dev-haskell"
 
-parseContents    :: FilePath -> IO [Content]
-parseContents fp = do lns <- liftM BS.lines $ BS.readFile fp
-                      return $ catMaybes $ map (parseCLine . BS.words) lns
+pkgsHaveContent   :: ([Content] -> Bool) -> IO [(Category, VersionedPkg)]
+pkgsHaveContent p = installedCats' >>= concatMapM (catHasContent p)
+
+catHasContent     :: ([Content] -> Bool) -> Category -> IO
+                     [(Category, VersionedPkg)]
+catHasContent p c = do inDir <- getDirectoryContents' cfp
+                       pkgs  <- filterM (withDir doesDirectoryExist) inDir
+                       pkgs' <- filterM (withDir (hasContent p)) pkgs
+                       return $ map ((,) c) pkgs'
   where
+    cfp = pkgDBDir </> c
+    withDir f x = f $ cfp </> x
+
+hasContent      :: ([Content] -> Bool) -> FilePath -> IO Bool
+hasContent p fp = do cnts <- parseContents fpc
+                     return $ p cnts
+  where
+    fpc = fp </> contents
+
+parseContents    :: FilePath -> IO [Content]
+parseContents cp = do ex <- doesFileExist cFile
+                      if ex
+                        then parse
+                        else return []
+  where
+    cFile = cp </> contents
+
+    parse = do lns <- liftM BS.lines $ BS.readFile cFile
+               return $ catMaybes $ map (parseCLine .BS.words) lns
+
     -- Use unwords of list rather than taking next element because of
     -- how spaces are represented in file names.
     parseCLine :: [ByteString] -> Maybe Content
@@ -96,25 +122,6 @@ parseContents fp = do lns <- liftM BS.lines $ BS.readFile fp
     obj = BS.pack "obj"
     dir = BS.pack "dir"
 
-pkgsHaveContent   :: ([Content] -> Bool) -> IO [(Category, VersionedPkg)]
-pkgsHaveContent p = do cats <- installedCats'
-                       concatMapM (catHasContent p) cats
-
-
--- TODO: strip off version from Package
-catHasContent     :: ([Content] -> Bool) -> Category -> IO
-                     [(Category, VersionedPkg)]
-catHasContent p c = do pkgs <- getDirectoryContents' cfp
-                       pkgs' <- filterM (hasContent p . (</>) cfp) pkgs
-                       return $ map ((,) c) pkgs'
-  where
-    cfp = pkgDBDir </> c
-
-hasContent      :: ([Content] -> Bool) -> FilePath -> IO Bool
-hasContent p fp = do cnts <- parseContents fpc
-                     return $ p cnts
-  where
-    fpc = fp </> contents
 
 hasContentMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
 hasContentMatching p = any p . map pathOf
