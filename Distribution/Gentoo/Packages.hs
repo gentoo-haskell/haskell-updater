@@ -74,6 +74,12 @@ installedCats' = do cats <- installedCats
   where
     haskCat = "dev-haskell"
 
+hasFile    :: FilePath -> IO (Maybe (Category, VersionedPkg))
+hasFile fp = liftM listToMaybe $ pkgsHaveContent p
+  where
+    fp' = BS.pack fp
+    p = hasObjMatching ((==) fp')
+
 pkgsHaveContent   :: ([Content] -> Bool) -> IO [(Category, VersionedPkg)]
 pkgsHaveContent p = installedCats' >>= concatMapM (catHasContent p)
 
