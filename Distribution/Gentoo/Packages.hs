@@ -22,6 +22,7 @@ import Control.Monad
 
 type Category = String
 type Package = String
+type VersionedPkg = String
 
 type BSFilePath = ByteString
 
@@ -95,14 +96,14 @@ parseContents fp = do lns <- liftM BS.lines $ BS.readFile fp
     obj = BS.pack "obj"
     dir = BS.pack "dir"
 
-pkgsHaveContent   :: ([Content] -> Bool) -> IO [(Category, Package)]
+pkgsHaveContent   :: ([Content] -> Bool) -> IO [(Category, VersionedPkg)]
 pkgsHaveContent p = do cats <- installedCats'
                        concatMapM (catHasContent p) cats
 
 
 -- TODO: strip off version from Package
 catHasContent     :: ([Content] -> Bool) -> Category -> IO
-                     [(Category, Package)]
+                     [(Category, VersionedPkg)]
 catHasContent p c = do pkgs <- getDirectoryContents' cfp
                        pkgs' <- filterM (hasContent p . (</>) cfp) pkgs
                        return $ map ((,) c) pkgs'
