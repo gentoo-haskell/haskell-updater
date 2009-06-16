@@ -24,6 +24,8 @@ type Category = String
 type Package = String
 type VersionedPkg = String
 
+type VCatPkg = (Category, VersionedPkg)
+
 type BSFilePath = ByteString
 
 data Content =   Dir BSFilePath
@@ -44,6 +46,9 @@ pathOf (Obj obj) = obj
 
 pkgDBDir :: FilePath
 pkgDBDir = "/var/db/pkg"
+
+pkgPath :: VCatPkg -> FilePath
+pkgPath (c,vp) = pkgDBDir </> c </> vp
 
 contents :: FilePath
 contents = "CONTENTS"
@@ -74,41 +79,43 @@ installedCats' = do cats <- installedCats
   where
     haskCat = "dev-haskell"
 
-hasFile    :: FilePath -> IO (Maybe (Category, VersionedPkg))
+hasFile    :: FilePath -> IO (Maybe VCatPkg)
 hasFile fp = liftM listToMaybe $ pkgsHaveContent p
   where
     fp' = BS.pack fp
     p = hasObjMatching ((==) fp')
 
-pkgsHaveContent   :: ([Content] -> Bool) -> IO [(Category, VersionedPkg)]
+pkgsHaveContent   :: ([Content] -> Bool) -> IO [VCatPkg]
 pkgsHaveContent p = installedCats' >>= concatMapM (catHasContent p)
 
 catHasContent     :: ([Content] -> Bool) -> Category -> IO
-                     [(Category, VersionedPkg)]
+                     [VCatPkg]
 catHasContent p c = do inDir <- getDirectoryContents' cfp
-                       pkgs  <- filterM (withDir doesDirectoryExist) inDir
-                       pkgs' <- filterM (withDir (hasContent p)) pkgs
-                       return $ map ((,) c) pkgs'
+                       let psbl = map ((,) c) inDir
+                       pkgs  <- filterM (doesDirectoryExist . pkgPath) psbl
+                       filterM (hasContent p) pkgs
   where
     cfp = pkgDBDir </> c
     withDir f x = f $ cfp </> x
 
-hasContent   :: ([Content] -> Bool) -> FilePath -> IO Bool
+hasContent   :: ([Content] -> Bool) -> VCatPkg -> IO Bool
 hasContent p = liftM p . parseContents
 
-parseContents    :: FilePath -> IO [Content]
+parseContents    :: VCatPkg -> IO [Content]
 parseContents cp = do ex <- doesFileExist cFile
                       if ex
                         then parse
                         else return []
   where
-    cFile = cp </> contents
+    cFile = pkgPath cp </> contents
 
     parse = do lns <- liftM BS.lines $ BS.readFile cFile
                return $ catMaybes $ map (parseCLine .BS.words) lns
 
     -- Use unwords of list rather than taking next element because of
     -- how spaces are represented in file names.
+    -- This might cause a problem if there is more than a single
+    -- space (or a tab) in the filename...
     parseCLine :: [ByteString] -> Maybe Content
     parseCLine (tp:ln)
       | tp == dir = Just . Dir . BS.unwords $ ln
