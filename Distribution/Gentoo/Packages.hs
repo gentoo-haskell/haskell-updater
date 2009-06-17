@@ -123,11 +123,8 @@ parseContents cp = do ex <- doesFileExist cFile
       | otherwise = Nothing
     parseCLine [] = Nothing
 
-    dropLastTwo        :: [a] -> [a]
-    dropLastTwo []     = error "Nothing to drop"
-    dropLastTwo [_]    = error "Only one thing to drop"
-    dropLastTwo [_,_]  = []
-    dropLastTwo (a:as) = a : dropLastTwo as
+    dropLastTwo :: [a] -> [a]
+    dropLastTwo = init . init
 
     obj = BS.pack "obj"
     dir = BS.pack "dir"
