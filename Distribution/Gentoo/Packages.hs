@@ -51,9 +51,6 @@ pkgDBDir = "/var/db/pkg"
 pkgPath :: VCatPkg -> FilePath
 pkgPath (c,vp) = pkgDBDir </> c </> vp
 
-ebuildFile   :: VersionedPkg -> FilePath
-ebuildFile p = p ++ ".ebuild"
-
 contents :: FilePath
 contents = "CONTENTS"
 
@@ -133,22 +130,17 @@ parseContents cp = do ex <- doesFileExist cFile
     obj = BS.pack "obj"
     dir = BS.pack "dir"
 
-getSlot          :: VCatPkg -> IO (Maybe Slot)
-getSlot cp@(_,p) = do ex <- doesFileExist eFile
-                      if ex
-                        then parse
-                        else return Nothing
+getSlot    :: VCatPkg -> IO (Maybe Slot)
+getSlot cp = do ex <- doesFileExist sFile
+                if ex
+                  then parse
+                  else return Nothing
   where
-    eFile = pkgPath cp </> ebuildFile p
+    sFile = pkgPath cp </> "SLOT"
 
-    parse = do lns <- liftM BS.lines $ BS.readFile eFile
-               let sLn = find isSlot lns
-               return $ fmap stripSlot sLn
-
-    isSlot = BS.isPrefixOf slotStart
-    stripSlot = BS.unpack . BS.init . BS.drop slotStartLen
-    slotStart = BS.pack "SLOT=\""
-    slotStartLen = BS.length slotStart
+    parse = do fl <- readFile sFile
+               -- Don't want the trailing newline
+               return $ listToMaybe $ lines fl
 
 hasContentMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
 hasContentMatching p = any p . map pathOf
