@@ -37,11 +37,14 @@ data Flag = Help
 options :: [OptDescr Flag]
 options =
   [ Option ['c']      ["check"]           (NoArg Check)
-            "Check dependencies"
+            "Check dependencies (Default Action)"
   , Option ['u']      ["upgrade"]         (NoArg Upgrade)
             "Rebuild packages after upgrade"
-  , Option ['P']      ["package-manager"] (OptArg (PM . getPM) pmHlp)
-            "Use Package Manager"
+  , Option ['P']      ["package-manager"] (OptArg (PM . getPM) "PM")
+            "Use package manager PM, where PM can be one of:\n\
+              \  * portage (default)\n\
+              \  * pkgcore\n\
+              \  * paludis"
   , Option ['p']      ["pretend"]         (NoArg Pretend)
             "Pretend to build, currently useless"
   , Option ['v']      ["version"]         (NoArg Version)
@@ -52,8 +55,3 @@ options =
     where
       getPM (Just pm) = pm
       getPM Nothing   = "portage"
-
-      pmHlp = "The following package managers are accepted:\n\
-              \  * portage (default)\n\
-              \  * pkgcore\n\
-              \  * paludis"
