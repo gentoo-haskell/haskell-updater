@@ -5,6 +5,7 @@ import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 
 import System.Console.GetOpt
+import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(ExitSuccess), exitWith)
 
 success     :: String -> IO ExitCode
@@ -33,6 +34,20 @@ data Flag = Help
           | Upgrade
           | Pretend
           deriving (Eq, Show)
+
+progInfo :: IO String
+progInfo = do name <- getProgName
+              return $ usageInfo (header name) options
+  where
+    header name = name ++ " -- Find and rebuild packages broken due to either:\n\
+                  \            * GHC upgrade\n\
+                  \            * Haskell dependency upgrade\n\
+                  \\n\
+                  \Usage: " ++ name ++ " [Option]\n\
+                  \\n\
+                  \\n\
+                  \Options:"
+
 
 options :: [OptDescr Flag]
 options =
