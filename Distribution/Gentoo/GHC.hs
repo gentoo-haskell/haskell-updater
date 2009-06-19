@@ -11,7 +11,7 @@
 module Distribution.Gentoo.GHC
        ( ghcVersion
        , libFronts
-       , rebuildConfFiles
+       , rebuildPkgs
        , brokenPkgs
        , ghcLibDir
        ) where
@@ -41,6 +41,7 @@ import Data.List(delete,nub,isPrefixOf)
 import Data.Maybe(fromJust,catMaybes)
 import qualified Data.Map as Map
 import Data.Map(Map)
+import qualified Data.ByteString.Char8 as BS
 import System.FilePath((</>), takeExtension)
 import System.Directory( canonicalizePath
                        , doesDirectoryExist
@@ -86,33 +87,29 @@ confFiles dir = do let gDir = dir </> "gentoo"
 
 -- Upgrading
 
--- The list of .conf files from old GHC versions that have to be rebuilt
-rebuildConfFiles :: IO [FilePath]
-rebuildConfFiles = concatMapM confFiles =<< oldGhcLibDirs
+rebuildPkgs :: IO [Package]
+rebuildPkgs = do thisGhc <- ghcLibDir
+                 let thisGhc' = BS.pack thisGhc
+                 concatMapM (checkLibDir thisGhc') libFronts
+
+checkLibDir                :: BSFilePath -> FilePath -> IO [Package]
+checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
+  where
+    wanted dir = isValid dir && (not . isInvalid) dir
+
+    isValid dir = BS.isPrefixOf (BS.pack $ libDir </> allowedDir) dir
+    allowedDir = "ghc"
+
+    isInvalid dir = any (flip BS.isPrefixOf dir)
+                    $ thisGhc : map (BS.pack . (</>) libDir) disAllowedDirs
+    -- Use a list here in case we have to add more later
+    disAllowedDirs = ["ghc-paths"]
 
 -- The possible places GHC could have installed lib directories
 libFronts :: [FilePath]
 libFronts = do loc <- ["usr", "opt" </> "ghc"]
                lib <- ["lib", "lib64"]
                return $ "/" </> loc </> lib
-
--- Lib directories from old GHC versions
-oldGhcLibDirs :: IO [FilePath]
-oldGhcLibDirs = do libDirs <- filterM doesDirectoryExist libFronts
-                   -- Remove symlinks, etc.
-                   canonLibs <- liftM nub $ mapM canonicalizePath libDirs
-                   ghcDirs <- concatMapM getGHCdirs canonLibs
-                   thisLib <- ghcLibDir
-                   return $ delete thisLib ghcDirs
-
--- Find all lib directories from GHC in this possible lib directory
-getGHCdirs     :: FilePath -> IO [FilePath]
-getGHCdirs dir = do contents <- getDirectoryContents dir
-                    let ghcDs = map (dir </>)
-                                -- ghc-paths isn't valid, so remove it
-                                . filter (not . isPrefixOf "ghc-paths")
-                                $ filter (isPrefixOf "ghc") contents
-                    filterM doesDirectoryExist ghcDs
 
 -- -----------------------------------------------------------------------------
 
