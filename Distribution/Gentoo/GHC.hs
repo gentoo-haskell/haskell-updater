@@ -90,6 +90,9 @@ confFiles dir = do let gDir = dir </> "gentoo"
 rebuildPkgs :: IO [Package]
 rebuildPkgs = do thisGhc <- ghcLibDir
                  let thisGhc' = BS.pack thisGhc
+                 -- It would be nice to do this, but we can't assume
+                 -- some crazy user hasn't deleted one of these dirs
+                 -- libFronts' <- filterM doesDirectoryExist libFronts
                  concatMapM (checkLibDir thisGhc') libFronts
 
 checkLibDir                :: BSFilePath -> FilePath -> IO [Package]
