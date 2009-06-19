@@ -150,6 +150,11 @@ parseContents cp = do ex <- doesFileExist cFile
     obj = BS.pack "obj"
     dir = BS.pack "dir"
 
+toPackage           :: VCatPkg -> IO Package
+toPackage cp@(c,vp) = do sl <- getSlot cp
+                         let p = stripVersion vp
+                         return $ Package c p sl
+
 getSlot    :: VCatPkg -> IO (Maybe Slot)
 getSlot cp = do ex <- doesFileExist sFile
                 if ex
