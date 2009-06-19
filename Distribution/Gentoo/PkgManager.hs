@@ -12,6 +12,7 @@ module Distribution.Gentoo.PkgManager
        ( PkgManager(name)
        , portage
        , pkgcore
+       , paludis
        , buildPkgs
        ) where
 
