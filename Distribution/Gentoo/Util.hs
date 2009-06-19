@@ -10,8 +10,12 @@
 module Distribution.Gentoo.Util where
 
 import Data.List(groupBy)
+import Data.ByteString.Char8(ByteString)
 import System.Directory(getDirectoryContents)
 import Control.Monad(liftM)
+
+-- Alias used to indicate that this ByteString represents a FilePath
+type BSFilePath = ByteString
 
 concatMapM   :: (a -> IO [b]) -> [a] -> IO [b]
 concatMapM f = liftM concat . mapM f

@@ -97,9 +97,6 @@ data Content =   Dir BSFilePath
                | Obj BSFilePath
                  deriving (Eq, Show)
 
--- Alias used to indicate that this ByteString represents a FilePath
-type BSFilePath = ByteString
-
 isDir         :: Content -> Bool
 isDir (Dir _) = True
 isDir _       = False
