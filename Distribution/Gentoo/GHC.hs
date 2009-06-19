@@ -93,7 +93,8 @@ rebuildPkgs = do thisGhc <- ghcLibDir
                  -- It would be nice to do this, but we can't assume
                  -- some crazy user hasn't deleted one of these dirs
                  -- libFronts' <- filterM doesDirectoryExist libFronts
-                 concatMapM (checkLibDir thisGhc') libFronts
+                 pkgs <- concatMapM (checkLibDir thisGhc') libFronts
+                 return $ notGHC pkgs
 
 checkLibDir                :: BSFilePath -> FilePath -> IO [Package]
 checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
@@ -121,7 +122,7 @@ libFronts = do loc <- ["usr", "opt" </> "ghc"]
 brokenPkgs :: IO [Package]
 brokenPkgs = do cnfs <- brokenConfs
                 mPkgs <- mapM hasFile cnfs
-                return $ catMaybes mPkgs
+                return $ notGHC $ catMaybes mPkgs
 
 -- .conf files from broken packages of this GHC version
 brokenConfs :: IO [FilePath]

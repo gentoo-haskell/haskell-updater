@@ -11,6 +11,7 @@
 module Distribution.Gentoo.Packages
        ( Package
        , Content
+       , notGHC
        , printPkg
        , hasFile
        , pkgsHaveContent
@@ -44,6 +45,22 @@ type Slot = String
 
 data Package = Package Category Pkg (Maybe Slot)
              deriving(Eq, Ord, Show, Read)
+
+-- Equality, ignoring the Slot
+samePackageAs :: Package -> Package -> Bool
+samePackageAs (Package c1 p1 _) (Package c2 p2 _)
+  = c1 == c2 && p1 == p2
+
+ghcPkg :: Package
+ghcPkg = Package "dev-lang" "ghc" Nothing
+
+ghcBinPkg :: Package
+ghcBinPkg = Package "dev-lang" "ghc-bin" Nothing
+
+notGHC :: [Package] -> [Package]
+notGHC = filter (\p -> isNot ghcPkg p && isNot ghcBinPkg p)
+  where
+    isNot p1 p2 = not $ samePackageAs p1 p2
 
 -- Pretty-print the Package name based on how PMs expect it
 printPkg                 :: Package -> String
