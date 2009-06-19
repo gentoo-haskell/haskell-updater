@@ -4,6 +4,7 @@ import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 
+import System.Console.GetOpt
 import System.Exit(ExitCode(ExitSuccess), exitWith)
 
 success     :: String -> IO ExitCode
@@ -24,3 +25,35 @@ ghcCheck    :: PkgManager -> IO ExitCode
 ghcCheck pm = do putStrLn "Looking for packages that need to rebuilt..."
                  buildPkgsFrom brokenPkgs pm
 
+
+data Flag = Help
+          | Version
+          | PM String
+          | Check
+          | Upgrade
+          | Pretend
+          deriving (Eq, Show)
+
+options :: [OptDescr Flag]
+options =
+  [ Option ['c']      ["check"]           (NoArg Check)
+            "Check dependencies"
+  , Option ['u']      ["upgrade"]         (NoArg Upgrade)
+            "Rebuild packages after upgrade"
+  , Option ['P']      ["package-manager"] (OptArg (PM . getPM) pmHlp)
+            "Use Package Manager"
+  , Option ['p']      ["pretend"]         (NoArg Pretend)
+            "Pretend to build, currently useless"
+  , Option ['v']      ["version"]         (NoArg Version)
+            "Version"
+  , Option ['h', '?'] ["help"]            (NoArg Help)
+            "Print this help message"
+  ]
+    where
+      getPM (Just pm) = pm
+      getPM Nothing   = "portage"
+
+      pmHlp = "The following package managers are accepted:\n\
+              \  * portage (default)\n\
+              \  * pkgcore\n\
+              \  * paludis"
