@@ -13,6 +13,7 @@ module Distribution.Gentoo.PkgManager
        , portage
        , pkgcore
        , paludis
+       , dummy
        , buildPkgs
        ) where
 
@@ -39,6 +40,9 @@ pkgcore = PM "pkgcore" "pmerge" ["--deep", "--oneshot", "--ignore-failures"]
 paludis :: PkgManager
 paludis = PM "paludis" "paludis" ["--install", "--preserve-world"
                                  , "--continue-on-failure if-independent"]
+
+dummy :: PkgManager
+dummy = PM "test PM" "echo" []
 
 buildPkgs    :: PkgManager -> [Package] -> IO ExitCode
 buildPkgs pm = system . buildCmd pm
