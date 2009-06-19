@@ -19,7 +19,7 @@ module Distribution.Gentoo.Packages
        , hasObjMatching
        ) where
 
-import Distribution.Gentoo.Util(breakAll, concatMapM)
+import Distribution.Gentoo.Util
 
 import Data.Char(isDigit)
 import Data.List(delete)
@@ -163,10 +163,6 @@ pkgsHaveContent   :: ([Content] -> Bool) -> IO [Package]
 pkgsHaveContent p = do cs <- installedCats'
                        cps <- concatMapM (catHasContent p) cs
                        mapM toPackage cps
-
-getDirectoryContents'     :: FilePath -> IO [FilePath]
-getDirectoryContents' dir = do is <- getDirectoryContents dir
-                               return $ filter (`notElem` [".", ".."]) is
 
 isCat    :: String -> IO Bool
 isCat fp = do isD <- doesDirectoryExist (pkgDBDir </> fp)

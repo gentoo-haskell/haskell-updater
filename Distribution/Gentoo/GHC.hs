@@ -74,7 +74,7 @@ confFiles     :: FilePath -> IO [FilePath]
 confFiles dir = do let gDir = dir </> "gentoo"
                    exists <- doesDirectoryExist gDir
                    if exists
-                     then do conts <- getDirectoryContents gDir
+                     then do conts <- getDirectoryContents' gDir
                              return $ map (gDir </>)
                                $ filter isConf conts
                      else return []
