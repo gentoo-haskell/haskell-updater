@@ -12,11 +12,12 @@ module Distribution.Gentoo.GHC
        ( ghcVersion
        , libFronts
        , rebuildConfFiles
-       , brokenConfs
+       , brokenPkgs
        , ghcLibDir
        ) where
 
 import Distribution.Gentoo.Util
+import Distribution.Gentoo.Packages
 
 -- Cabal imports
 import Distribution.Simple.PackageIndex( PackageIndex
@@ -116,6 +117,11 @@ getGHCdirs dir = do contents <- getDirectoryContents dir
 -- -----------------------------------------------------------------------------
 
 -- Fixing
+
+brokenPkgs :: IO [Package]
+brokenPkgs = do cnfs <- brokenConfs
+                mPkgs <- mapM hasFile cnfs
+                return $ catMaybes mPkgs
 
 -- .conf files from broken packages of this GHC version
 brokenConfs :: IO [FilePath]
