@@ -21,7 +21,7 @@ module Distribution.Gentoo.Packages
 
 import Distribution.Gentoo.Util
 
-import Data.Char(isDigit)
+import Data.Char(isDigit, isAlphaNum)
 import Data.List(delete)
 import Data.Maybe(catMaybes, listToMaybe)
 import qualified Data.ByteString.Char8 as BS
@@ -70,12 +70,18 @@ getSlot cp = do ex <- doesFileExist sFile
                return $ listToMaybe $ lines fl
 
 stripVersion :: VerPkg -> Pkg
-stripVersion = concat . takeWhile (not . isVer) . breakAll partSep
+stripVersion = concat . takeUntilVer . breakAll partSep
   where
     partSep x = x `elem` "-_"
 
-    isVer ('-':as) = all (\a -> isDigit a || a == '.') as
-    isVer _        = False
+    -- Only the last bit that matches isVer is the real version bit.
+    -- Note that this doesn't check that the last non-version bit is
+    -- not a hyphen followed by digits.
+    takeUntilVer = concat . init . breakAll isVer
+
+    isVer as = isVerFront (init as) && isAlphaNum (last as)
+    isVerFront ('-':as) = all (\a -> isDigit a || a == '.') as
+    isVerFront _        = False
 
 pkgPath :: VCatPkg -> FilePath
 pkgPath (c,vp) = pkgDBDir </> c </> vp
