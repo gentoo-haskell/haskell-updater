@@ -67,7 +67,7 @@ ghcVersion :: IO String
 ghcVersion = liftM (dropWhile (not . isDigit))
              $ ghcRawOut ["--version"]
 
-ghcLibDir :: IO String
+ghcLibDir :: IO FilePath
 ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
 
 -- Return the Gentoo .conf files found in this GHC libdir
