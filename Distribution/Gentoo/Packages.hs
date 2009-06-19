@@ -19,10 +19,10 @@ module Distribution.Gentoo.Packages
        , hasObjMatching
        ) where
 
-import Distribution.Gentoo.Util(concatMapM)
+import Distribution.Gentoo.Util(breakAll, concatMapM)
 
 import Data.Char(isDigit)
-import Data.List(delete, groupBy)
+import Data.List(delete)
 import Data.Maybe(catMaybes, listToMaybe)
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8(ByteString)
@@ -78,9 +78,6 @@ stripVersion = concat . takeWhile (not . isVer) . breakAll partSep
 
     isVer ('-':as) = all (\a -> isDigit a || a == '.') as
     isVer _        = False
-
-breakAll   :: (a -> Bool) -> [a] -> [[a]]
-breakAll p = groupBy (const (not . p))
 
 getDirectoryContents'     :: FilePath -> IO [FilePath]
 getDirectoryContents' dir = do is <- getDirectoryContents dir
