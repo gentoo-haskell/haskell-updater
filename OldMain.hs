@@ -50,7 +50,7 @@ main = do
   let knownGhcLibPath | "/usr/lib"     `isPrefixOf` ghcLibDir = True
                       | "/opt/ghc/lib" `isPrefixOf` ghcLibDir = True
                       | otherwise = False
-  
+
   when (not knownGhcLibPath) $ do
     putStrLn ""
     putStrLn "[WARNING] Seems you're not using a Gentoo installation of GHC. Are you sure you want to continue?"
@@ -88,7 +88,7 @@ hasFileInDirs :: [BS.ByteString] -> (Category, Package, FilePath) -> IO [BS.Byte
 hasFileInDirs dirs (_,_,path) = do
   entries <- readContents (path </> "CONTENTS")
   return
-    [ p 
+    [ p
     | (Obj p) <- entries
     , d <- dirs
     , d `BS.isPrefixOf` p
@@ -99,7 +99,7 @@ hasFileInDirs dirs (_,_,path) = do
 -- all the previous ghc installations where the directory still exists.
 getAllGhcDirs :: IO [FilePath]
 getAllGhcDirs = do
-  let libdirs = [ root </> bits 
+  let libdirs = [ root </> bits
                 | root <- [ "/usr", "/opt/ghc" ]
                 , bits <- [ "lib", "lib64" ]
                 ]
