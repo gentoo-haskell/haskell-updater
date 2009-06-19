@@ -82,9 +82,6 @@ stripVersion = concat . takeWhile (not . isVer) . breakAll partSep
 breakAll   :: (a -> Bool) -> [a] -> [[a]]
 breakAll p = groupBy (const (not . p))
 
-contents :: FilePath
-contents = "CONTENTS"
-
 getDirectoryContents'     :: FilePath -> IO [FilePath]
 getDirectoryContents' dir = do is <- getDirectoryContents dir
                                return $ filter (`notElem` [".", ".."]) is
@@ -141,7 +138,7 @@ parseContents cp = do ex <- doesFileExist cFile
                         then parse
                         else return []
   where
-    cFile = pkgPath cp </> contents
+    cFile = pkgPath cp </> "CONTENTS"
 
     parse = do lns <- liftM BS.lines $ BS.readFile cFile
                return $ catMaybes $ map (parseCLine .BS.words) lns
