@@ -8,18 +8,29 @@
    This module defines helper functions that deal with installed
    packages in Gentoo.
 -}
-module Distribution.Gentoo.Packages where
+module Distribution.Gentoo.Packages
+       ( Package
+       , Content
+       , printPkg
+       , hasFile
+       , pkgsHaveContent
+       , hasContentMatching
+       , hasDirMatching
+       , hasObjMatching
+       ) where
 
-import Distribution.Gentoo.Util
+import Distribution.Gentoo.Util(concatMapM)
 
 import Data.Char(isDigit)
-import Data.List
-import Data.Maybe
-import System.Directory
-import System.FilePath
+import Data.List(delete, groupBy)
+import Data.Maybe(catMaybes, listToMaybe)
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8(ByteString)
-import Control.Monad
+import System.Directory( doesDirectoryExist
+                       , doesFileExist
+                       , getDirectoryContents)
+import System.FilePath((</>))
+import Control.Monad(filterM, liftM)
 
 type Category = String
 type Pkg = String
