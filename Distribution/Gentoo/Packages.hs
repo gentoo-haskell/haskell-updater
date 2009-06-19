@@ -27,6 +27,15 @@ type VerPkg = String
 type VCatPkg = (Category, VerPkg)
 type Slot = String
 
+data Package = Package Category Pkg (Maybe Slot)
+             deriving(Eq, Ord, Show, Read)
+
+printPkg                 :: Package -> String
+printPkg (Package c p s) = addS cp
+  where
+    addS = maybe id (flip (++) . (:) ':') s
+    cp = c ++ '/':p
+
 type BSFilePath = ByteString
 
 data Content =   Dir BSFilePath
