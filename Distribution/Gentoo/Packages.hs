@@ -12,6 +12,7 @@ module Distribution.Gentoo.Packages where
 
 import Distribution.Gentoo.Util
 
+import Data.Char(isDigit)
 import Data.List
 import Data.Maybe
 import System.Directory
@@ -21,11 +22,10 @@ import Data.ByteString.Char8(ByteString)
 import Control.Monad
 
 type Category = String
-type Package = String
-type VersionedPkg = String
+type Pkg = String
+type VerPkg = String
+type VCatPkg = (Category, VerPkg)
 type Slot = String
-
-type VCatPkg = (Category, VersionedPkg)
 
 type BSFilePath = ByteString
 
@@ -50,6 +50,17 @@ pkgDBDir = "/var/db/pkg"
 
 pkgPath :: VCatPkg -> FilePath
 pkgPath (c,vp) = pkgDBDir </> c </> vp
+
+stripVersion :: VerPkg -> Pkg
+stripVersion = concat . takeWhile (not . isVer) . breakAll partSep
+  where
+    partSep x = x `elem` "-_"
+
+    isVer ('-':as) = all (\a -> isDigit a || a == '.') as
+    isVer _        = False
+
+breakAll   :: (a -> Bool) -> [a] -> [[a]]
+breakAll p = groupBy (const (not . p))
 
 contents :: FilePath
 contents = "CONTENTS"
