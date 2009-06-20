@@ -22,13 +22,19 @@ import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
 import Control.Monad(liftM, liftM2, when, unless)
 
+-- -----------------------------------------------------------------------------
 -- The overall program.
+
 main :: IO ()
-main = do (pm, act) <- parseArgs
-          case act of
-            DepCheck   -> ghcCheck pm
-            GhcUpgrade -> ghcUpgrade pm
-            Both       -> ghcBoth pm
+main = parseArgs >>= uncurry actionOf
+
+data Action = DepCheck | GhcUpgrade | Both
+            deriving (Eq, Show)
+
+actionOf            :: Action -> PkgManager -> IO a
+actionOf DepCheck   = ghcCheck
+actionOf GhcUpgrade = ghcUpgrade
+actionOf Both       = ghcBoth
 
 -- -----------------------------------------------------------------------------
 -- Utility functions
@@ -69,17 +75,14 @@ buildPkgsFrom ps pm = do ps' <- ps
 -- -----------------------------------------------------------------------------
 -- Command-line arguments
 
-data Action = DepCheck | GhcUpgrade | Both
-            deriving (Eq, Show)
-
 -- Get and parse args
-parseArgs :: IO (PkgManager, Action)
+parseArgs :: IO (Action, PkgManager)
 parseArgs = do args <- getArgs
                argParser $ getOpt Permute options args
 
 -- Parse args
 argParser                :: ([Flag], [String], [String])
-                            -> IO (PkgManager, Action)
+                            -> IO (Action, PkgManager)
 argParser (fls, oth, []) = do unless (null oth)
                                 $ putErrLn
                                 $ unwords $ "Unknown options:" : oth
@@ -88,7 +91,7 @@ argParser (fls, oth, []) = do unless (null oth)
                                 $ err
                                 $ unwords [ "Unknown package manager:"
                                           , fromJust pmSpec]
-                              return (fromJust pm, action)
+                              return (action, fromJust pm)
   where
     upgrade = Upgrade `elem` fls
     check = Check `elem` fls
