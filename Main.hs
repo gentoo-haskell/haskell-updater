@@ -10,32 +10,32 @@ import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
 import Control.Monad(liftM, liftM2)
 
-success     :: String -> IO ExitCode
+success     :: String -> IO a
 success msg = do putStrLn msg
                  exitWith ExitSuccess
 
-die     :: String -> IO ExitCode
+die     :: String -> IO a
 die msg = do putErrLn msg
              exitWith (ExitFailure 1)
 
 putErrLn :: String -> IO ()
 putErrLn = hPutStrLn stderr
 
-buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO ExitCode
+buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO a
 buildPkgsFrom ps pm = do ps' <- ps
                          if null ps'
                            then success "Nothing to build!"
                            else buildPkgs pm ps' >>= exitWith
 
-ghcUpgrade    :: PkgManager -> IO ExitCode
+ghcUpgrade    :: PkgManager -> IO a
 ghcUpgrade pm = do putStrLn "Looking for packages from old GHC installs..."
                    buildPkgsFrom rebuildPkgs pm
 
-ghcCheck    :: PkgManager -> IO ExitCode
+ghcCheck    :: PkgManager -> IO a
 ghcCheck pm = do putStrLn "Looking for packages that need to rebuilt..."
                  buildPkgsFrom brokenPkgs pm
 
-ghcBoth    :: PkgManager -> IO ExitCode
+ghcBoth    :: PkgManager -> IO a
 ghcBoth pm = do putStrLn "Looking for packages from both old GHC \
                           \installs, and those that need to be rebuilt..."
                 flip buildPkgsFrom pm $ liftM2 (++) brokenPkgs rebuildPkgs
@@ -49,10 +49,10 @@ data Flag = Help
           | Pretend
           deriving (Eq, Show)
 
-help :: IO ExitCode
+help :: IO a
 help = progInfo >>= success
 
-err     :: String -> IO ExitCode
+err     :: String -> IO a
 err msg = liftM addMsg progInfo >>= die
   where
     addMsg str = msg ++ "\n\n"++ str
