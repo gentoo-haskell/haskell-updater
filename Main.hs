@@ -6,12 +6,17 @@ import Distribution.Gentoo.PkgManager
 
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
-import System.Exit(ExitCode(ExitSuccess), exitWith)
-import Control.Monad(liftM2)
+import System.Exit(ExitCode(..), exitWith)
+import System.IO(hPutStrLn, stderr)
+import Control.Monad(liftM, liftM2)
 
 success     :: String -> IO ExitCode
 success msg = do putStrLn msg
                  exitWith ExitSuccess
+
+die     :: String -> IO ExitCode
+die msg = do hPutStrLn stderr msg
+             exitWith (ExitFailure 1)
 
 buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO ExitCode
 buildPkgsFrom ps pm = do ps' <- ps
@@ -40,6 +45,14 @@ data Flag = Help
           | Upgrade
           | Pretend
           deriving (Eq, Show)
+
+help :: IO ExitCode
+help = progInfo >>= success
+
+err     :: String -> IO ExitCode
+err msg = liftM addMsg progInfo >>= die
+  where
+    addMsg str = msg ++ "\n\n"++ str
 
 progInfo :: IO String
 progInfo = do name <- getProgName
