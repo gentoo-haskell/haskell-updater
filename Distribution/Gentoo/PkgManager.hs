@@ -9,16 +9,18 @@
    GHC, or else find packages installed with older versions of GHC.
  -}
 module Distribution.Gentoo.PkgManager
-       ( PkgManager(name)
+       ( PkgManager
        , portage
        , pkgcore
        , paludis
+       , choosePM
        , dummy
        , buildPkgs
        ) where
 
 import Distribution.Gentoo.Packages
 
+import Data.List(find)
 import System.Process(system)
 import System.Exit(ExitCode)
 
@@ -30,6 +32,12 @@ data PkgManager = PM { name :: Name
 type Name = String
 type Command = String
 type Option = String
+
+choosePM     :: String -> Maybe PkgManager
+choosePM str = fmap snd $ find ((==) str . fst) pmNames
+  where
+    pmNames = map ((,) =<< name) pms
+    pms = [portage, pkgcore, paludis]
 
 portage :: PkgManager
 portage = PM "portage" "emerge" ["--deep", "--oneshot", "--keep-going"]
