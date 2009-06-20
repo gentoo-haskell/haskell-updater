@@ -58,6 +58,7 @@ argParser                :: ([Flag], [String], [String])
 argParser (fls, oth, []) = do when (not $ null oth)
                                 $ putErrLn
                                 $ unwords $ "Unknown options:" : oth
+                              when (Help `elem` fls) help
                               when (isNothing pm)
                                 $ err
                                 $ unwords [ "Unknown package manager:"
