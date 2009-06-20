@@ -12,6 +12,13 @@ import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
 import Control.Monad(liftM, liftM2, when)
 
+main :: IO ()
+main = do (pm, act) <- parseArgs
+          case act of
+            DepCheck   -> ghcCheck pm
+            GhcUpgrade -> ghcUpgrade pm
+            Both       -> ghcBoth pm
+
 success     :: String -> IO a
 success msg = do putStrLn msg
                  exitWith ExitSuccess
