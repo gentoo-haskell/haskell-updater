@@ -7,6 +7,7 @@ import Distribution.Gentoo.PkgManager
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(ExitSuccess), exitWith)
+import Control.Monad(liftM2)
 
 success     :: String -> IO ExitCode
 success msg = do putStrLn msg
@@ -25,6 +26,11 @@ ghcUpgrade pm = do putStrLn "Looking for packages from old GHC installs..."
 ghcCheck    :: PkgManager -> IO ExitCode
 ghcCheck pm = do putStrLn "Looking for packages that need to rebuilt..."
                  buildPkgsFrom brokenPkgs pm
+
+ghcBoth    :: PkgManager -> IO ExitCode
+ghcBoth pm = do putStrLn "Looking for packages from both old GHC \
+                          \installs, and those that need to be rebuilt..."
+                flip buildPkgsFrom pm $ liftM2 (++) brokenPkgs rebuildPkgs
 
 
 data Flag = Help
