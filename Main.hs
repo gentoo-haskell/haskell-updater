@@ -4,11 +4,13 @@ import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 
+import Data.List(find)
+import Data.Maybe(fromJust, isNothing)
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
-import Control.Monad(liftM, liftM2)
+import Control.Monad(liftM, liftM2, when)
 
 success     :: String -> IO a
 success msg = do putStrLn msg
@@ -40,6 +42,34 @@ ghcBoth pm = do putStrLn "Looking for packages from both old GHC \
                           \installs, and those that need to be rebuilt..."
                 flip buildPkgsFrom pm $ liftM2 (++) brokenPkgs rebuildPkgs
 
+parseArgs :: IO (PkgManager, Action)
+parseArgs = do args <- getArgs
+               argParser $ getOpt Permute options args
+
+argParser                :: ([Flag], [String], [String])
+                            -> IO (PkgManager, Action)
+argParser (fls, oth, []) = do when (not $ null oth)
+                                $ putErrLn
+                                $ unwords $ "Unknown options:" : oth
+                              when (isNothing pm)
+                                $ err
+                                $ unwords [ "Unknown package manager:"
+                                          , fromJust pmSpec]
+                              return (fromJust pm, action)
+  where
+    upgrade = Upgrade `elem` fls
+    check = Check `elem` fls
+    action | upgrade == check = Both
+           | upgrade          = GhcUpgrade
+           | otherwise        = DepCheck
+
+    pmSpec = fmap unPM $ find isPM fls
+    pm = maybe (Just portage) choosePM pmSpec
+
+argParser (_, _, errs)   = die $ unwords $ "Errors in arguments:" : errs
+
+data Action = DepCheck | GhcUpgrade | Both
+            deriving (Eq, Show)
 
 data Flag = Help
           | Version
@@ -48,6 +78,14 @@ data Flag = Help
           | Upgrade
           | Pretend
           deriving (Eq, Show)
+
+isPM        :: Flag -> Bool
+isPM (PM _) = True
+isPM _      = False
+
+unPM         :: Flag -> String
+unPM (PM pm) = pm
+unPM _       = error "unPM only valid if isPM is true."
 
 help :: IO a
 help = progInfo >>= success
