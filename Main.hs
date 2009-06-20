@@ -55,7 +55,7 @@ options =
             "Check dependencies (Default Action)"
   , Option ['u']      ["upgrade"]         (NoArg Upgrade)
             "Rebuild packages after upgrade"
-  , Option ['P']      ["package-manager"] (OptArg (PM . getPM) "PM")
+  , Option ['P']      ["package-manager"] (ReqArg PM "PM")
             "Use package manager PM, where PM can be one of:\n\
               \  * portage (default)\n\
               \  * pkgcore\n\
@@ -67,6 +67,3 @@ options =
   , Option ['h', '?'] ["help"]            (NoArg Help)
             "Print this help message"
   ]
-    where
-      getPM (Just pm) = pm
-      getPM Nothing   = "portage"
