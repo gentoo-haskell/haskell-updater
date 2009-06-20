@@ -88,7 +88,7 @@ getSlot cp = do ex <- doesFileExist sFile
 stripVersion :: VerPkg -> Pkg
 stripVersion = concat . takeUntilVer . breakAll partSep
   where
-    partSep x = x `elem` "-_"
+    partSep x = x `elem` ['-', '_']
 
     -- Only the last bit that matches isVer is the real version bit.
     -- Note that this doesn't check that the last non-version bit is

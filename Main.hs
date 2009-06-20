@@ -1,3 +1,13 @@
+{- |
+   Module      : Main
+   Description : The haskell-updater executable
+   Copyright   : (c) Ivan Lazar Miljenovic 2009
+   License     : GPL-2 or later
+   Maintainer  : Ivan.Miljenovic@gmail.com
+
+   The executable module of haskell-updater, which finds Haskell
+   packages to rebuild after a dep upgrade or a GHC upgrade.
+-}
 module Main where
 
 import Distribution.Gentoo.GHC
@@ -10,14 +20,18 @@ import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
-import Control.Monad(liftM, liftM2, when)
+import Control.Monad(liftM, liftM2, when, unless)
 
+-- The overall program.
 main :: IO ()
 main = do (pm, act) <- parseArgs
           case act of
             DepCheck   -> ghcCheck pm
             GhcUpgrade -> ghcUpgrade pm
             Both       -> ghcBoth pm
+
+-- -----------------------------------------------------------------------------
+-- Utility functions
 
 success     :: String -> IO a
 success msg = do putStrLn msg
@@ -30,11 +44,8 @@ die msg = do putErrLn msg
 putErrLn :: String -> IO ()
 putErrLn = hPutStrLn stderr
 
-buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO a
-buildPkgsFrom ps pm = do ps' <- ps
-                         if null ps'
-                           then success "Nothing to build!"
-                           else buildPkgs pm ps' >>= exitWith
+-- -----------------------------------------------------------------------------
+-- Finding and rebuilding packages
 
 ghcUpgrade    :: PkgManager -> IO a
 ghcUpgrade pm = do putStrLn "Looking for packages from old GHC installs..."
@@ -49,13 +60,27 @@ ghcBoth pm = do putStrLn "Looking for packages from both old GHC \
                           \installs, and those that need to be rebuilt..."
                 flip buildPkgsFrom pm $ liftM2 (++) brokenPkgs rebuildPkgs
 
+buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO a
+buildPkgsFrom ps pm = do ps' <- ps
+                         if null ps'
+                           then success "Nothing to build!"
+                           else buildPkgs pm ps' >>= exitWith
+
+-- -----------------------------------------------------------------------------
+-- Command-line arguments
+
+data Action = DepCheck | GhcUpgrade | Both
+            deriving (Eq, Show)
+
+-- Get and parse args
 parseArgs :: IO (PkgManager, Action)
 parseArgs = do args <- getArgs
                argParser $ getOpt Permute options args
 
+-- Parse args
 argParser                :: ([Flag], [String], [String])
                             -> IO (PkgManager, Action)
-argParser (fls, oth, []) = do when (not $ null oth)
+argParser (fls, oth, []) = do unless (null oth)
                                 $ putErrLn
                                 $ unwords $ "Unknown options:" : oth
                               when (Help `elem` fls) help
@@ -76,24 +101,6 @@ argParser (fls, oth, []) = do when (not $ null oth)
 
 argParser (_, _, errs)   = die $ unwords $ "Errors in arguments:" : errs
 
-data Action = DepCheck | GhcUpgrade | Both
-            deriving (Eq, Show)
-
-data Flag = Help
-          | Version
-          | PM String
-          | Check
-          | Upgrade
-          | Pretend
-          deriving (Eq, Show)
-
-isPM        :: Flag -> Bool
-isPM (PM _) = True
-isPM _      = False
-
-unPM         :: Flag -> String
-unPM (PM pm) = pm
-unPM _       = error "unPM only valid if isPM is true."
 
 help :: IO a
 help = progInfo >>= success
@@ -117,6 +124,24 @@ progInfo = do name <- getProgName
                   \\n\
                   \Options:"
 
+-- -----------------------------------------------------------------------------
+-- Command-line flags
+
+data Flag = Help
+          | Version
+          | PM String
+          | Check
+          | Upgrade
+          | Pretend
+          deriving (Eq, Show)
+
+isPM        :: Flag -> Bool
+isPM (PM _) = True
+isPM _      = False
+
+unPM         :: Flag -> String
+unPM (PM pm) = pm
+unPM _       = error "unPM only valid if isPM is true."
 
 options :: [OptDescr Flag]
 options =
