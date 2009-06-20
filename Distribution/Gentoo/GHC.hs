@@ -26,8 +26,7 @@ import Distribution.Simple.PackageIndex( PackageIndex
 import Distribution.Simple.GHC(getInstalledPackages, configure)
 import Distribution.Simple.Program( ProgramConfiguration
                                   , defaultProgramConfiguration)
-import Distribution.Simple.Compiler( PackageDB(GlobalPackageDB)
-                                   , compilerVersion)
+import Distribution.Simple.Compiler(PackageDB(GlobalPackageDB))
 import Distribution.Simple.Utils(rawSystemStdout)
 import Distribution.Verbosity(silent)
 import Distribution.Package(PackageName, packageName)
@@ -37,17 +36,15 @@ import Distribution.InstalledPackageInfo( InstalledPackageInfo
 
 -- Other imports
 import Data.Char(isDigit)
-import Data.List(delete,nub,isPrefixOf)
-import Data.Maybe(fromJust,catMaybes)
+import Data.Maybe(catMaybes)
 import qualified Data.Map as Map
 import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
 import System.FilePath((</>), takeExtension)
 import System.Directory( canonicalizePath
                        , doesDirectoryExist
-                       , findExecutable
-                       , getDirectoryContents)
-import Control.Monad(filterM, foldM, liftM, when)
+                       , findExecutable)
+import Control.Monad(foldM, liftM)
 
 -- -----------------------------------------------------------------------------
 
@@ -81,7 +78,7 @@ confFiles dir = do let gDir = dir </> "gentoo"
                                $ filter isConf conts
                      else return []
   where
-    isConf file = (takeExtension file) == ".conf"
+    isConf file = takeExtension file == ".conf"
 
 -- -----------------------------------------------------------------------------
 
@@ -101,7 +98,7 @@ checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
   where
     wanted dir = isValid dir && (not . isInvalid) dir
 
-    isValid dir = BS.isPrefixOf (BS.pack $ libDir </> allowedDir) dir
+    isValid = BS.isPrefixOf (BS.pack $ libDir </> allowedDir)
     allowedDir = "ghc"
 
     isInvalid dir = any (flip BS.isPrefixOf dir)
@@ -129,7 +126,7 @@ brokenConfs :: IO [FilePath]
 brokenConfs = do brkn <- getBroken
                  -- Check if we actually have to go look up files and
                  -- do IO.
-                 if (null brkn)
+                 if null brkn
                    then return []
                    else do cnfs <- readConf
                            -- Need to think about what to do if PN \notin cnfs

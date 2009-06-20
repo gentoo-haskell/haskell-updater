@@ -28,8 +28,7 @@ import Data.Maybe(catMaybes, listToMaybe)
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8(ByteString)
 import System.Directory( doesDirectoryExist
-                       , doesFileExist
-                       , getDirectoryContents)
+                       , doesFileExist)
 import System.FilePath((</>))
 import Control.Monad(filterM, liftM)
 
@@ -60,7 +59,7 @@ ghcBinPkg = Package "dev-lang" "ghc-bin" Nothing
 notGHC :: [Package] -> [Package]
 notGHC = filter (\p -> isNot ghcPkg p && isNot ghcBinPkg p)
   where
-    isNot p1 p2 = not $ samePackageAs p1 p2
+    isNot p1 = not . samePackageAs p1
 
 -- Pretty-print the Package name based on how PMs expect it
 printPkg                 :: Package -> String
@@ -214,7 +213,6 @@ catHasContent p c = do inDir <- getDirectoryContents' cfp
                        filterM (hasContent p) pkgs
   where
     cfp = pkgDBDir </> c
-    withDir f x = f $ cfp </> x
 
 hasContent   :: ([Content] -> Bool) -> VCatPkg -> IO Bool
 hasContent p = liftM p . parseContents
