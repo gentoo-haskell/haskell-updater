@@ -48,6 +48,7 @@ progInfo = do name <- getProgName
     header name = name ++ " -- Find and rebuild packages broken due to either:\n\
                   \            * GHC upgrade\n\
                   \            * Haskell dependency upgrade\n\
+                  \         Default action is to do both.\n\
                   \\n\
                   \Usage: " ++ name ++ " [Option]\n\
                   \\n\
@@ -57,19 +58,19 @@ progInfo = do name <- getProgName
 
 options :: [OptDescr Flag]
 options =
-  [ Option ['c']      ["check"]           (NoArg Check)
-            "Check dependencies (Default Action)"
+  [ Option ['c']      ["dep-check"]       (NoArg Check)
+            "Check dependencies of Haskell packages."
   , Option ['u']      ["upgrade"]         (NoArg Upgrade)
-            "Rebuild packages after upgrade"
+            "Rebuild Haskell packages after a GHC upgrade."
   , Option ['P']      ["package-manager"] (ReqArg PM "PM")
             "Use package manager PM, where PM can be one of:\n\
               \  * portage (default)\n\
               \  * pkgcore\n\
               \  * paludis"
   , Option ['p']      ["pretend"]         (NoArg Pretend)
-            "Pretend to build, currently useless"
+            "Only pretend to build packages, currently ignored."
   , Option ['v']      ["version"]         (NoArg Version)
-            "Version"
+            "Version information."
   , Option ['h', '?'] ["help"]            (NoArg Help)
-            "Print this help message"
+            "Print this help message."
   ]
