@@ -15,8 +15,11 @@ success msg = do putStrLn msg
                  exitWith ExitSuccess
 
 die     :: String -> IO ExitCode
-die msg = do hPutStrLn stderr msg
+die msg = do putErrLn msg
              exitWith (ExitFailure 1)
+
+putErrLn :: String -> IO ()
+putErrLn = hPutStrLn stderr
 
 buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO ExitCode
 buildPkgsFrom ps pm = do ps' <- ps
