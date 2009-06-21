@@ -14,6 +14,7 @@ module Distribution.Gentoo.PkgManager
        , packageManagers
        , defaultPM
        , dummy
+       , setPretend
        , buildPkgs
        ) where
 
@@ -49,6 +50,13 @@ paludis = PM "paludis" "paludis" ["--install", "--preserve-world"
 
 dummy :: PkgManager
 dummy = PM "test PM" "echo" []
+
+-- All 3 PMs use --pretend to show what packages they would build;
+-- assume that they are all like this.
+setPretend    :: PkgManager -> PkgManager
+setPretend pm = pm { opts = pOpt : opts pm }
+    where
+      pOpt = "--pretend"
 
 buildPkgs    :: PkgManager -> [Package] -> IO ExitCode
 buildPkgs pm = system . buildCmd pm

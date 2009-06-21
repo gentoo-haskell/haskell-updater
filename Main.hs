@@ -106,7 +106,10 @@ argParser (fls, oth, []) = do unless (null oth)
            | otherwise        = DepCheck
 
     pmSpec = fmap unPM $ find isPM fls
-    pm = maybe (Just defaultPM) choosePM pmSpec
+    enablePretend = if hasFlag Pretend
+                    then setPretend
+                    else id
+    pm = fmap enablePretend $ maybe (Just defaultPM) choosePM pmSpec
 
     choosePM str = find ((==) str' . name) packageManagers
         where
@@ -169,7 +172,7 @@ options =
       $ "Use package manager PM, where PM can be one of:\n"
             ++ pmList ++ defPM
     , Option ['p']      ["pretend"]         (NoArg Pretend)
-      "Only pretend to build packages, currently ignored."
+      "Only pretend to build packages."
     , Option ['v']      ["version"]         (NoArg Version)
       "Version information."
     , Option ['h', '?'] ["help"]            (NoArg Help)
