@@ -1,4 +1,5 @@
 Name:                haskell-updater
+Homepage:            http://haskell.org/haskellwiki/Gentoo#haskell-updater
 Version:             0.1.0.0
 Synopsis:            Rebuild Haskell dependencies in Gentoo
 Description:         haskell-updater rebuilds Haskell packages on Gentoo
