@@ -1,7 +1,7 @@
 {- |
    Module      : Main
    Description : The haskell-updater executable
-   Copyright   : (c) Ivan Lazar Miljenovic 2009
+   Copyright   : (c) Ivan Lazar Miljenovic, Stephan Friedrichs 2009
    License     : GPL-2 or later
    Maintainer  : Ivan.Miljenovic@gmail.com
 

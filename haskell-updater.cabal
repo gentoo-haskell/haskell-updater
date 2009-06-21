@@ -6,8 +6,12 @@ Description:         haskell-updater rebuilds Haskell packages on Gentoo
 Category:            Distribution
 License:             GPL
 License-file:        COPYRIGHT
-Copyright:           (c) Ivan Lazar Miljenovic, Lennart Kolmodin
-Author:              Ivan Lazar Miljenovic, Lennart Kolmodin
+Copyright:           (c) Ivan Lazar Miljenovic,
+                         Lennart Kolmodin,
+                         Stephan Friedrichs
+Author:              Ivan Lazar Miljenovic,
+                     Lennart Kolmodin,
+                     Stephan Friedrichs
 Maintainer:          Ivan.Miljenovic@gmail.com
 Cabal-Version:       >= 1.2
 Build-Type:          Simple
