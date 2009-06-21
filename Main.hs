@@ -119,15 +119,15 @@ err msg = liftM addMsg progInfo >>= die
     addMsg str = msg ++ "\n\n"++ str
 
 progInfo :: IO String
-progInfo = do name <- getProgName
-              return $ usageInfo (header name) options
+progInfo = do pName <- getProgName
+              return $ usageInfo (header pName) options
   where
-    header name = name ++ " -- Find and rebuild packages broken due to either:\n\
+    header pName = pName ++ " -- Find and rebuild packages broken due to either:\n\
                   \            * GHC upgrade\n\
                   \            * Haskell dependency upgrade\n\
                   \         Default action is to do both.\n\
                   \\n\
-                  \Usage: " ++ name ++ " [Option]\n\
+                  \Usage: " ++ pName ++ " [Option]\n\
                   \\n\
                   \\n\
                   \Options:"
