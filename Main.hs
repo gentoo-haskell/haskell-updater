@@ -89,16 +89,18 @@ argParser                :: ([Flag], [String], [String])
 argParser (fls, oth, []) = do unless (null oth)
                                 $ putErrLn
                                 $ unwords $ "Unknown options:" : oth
-                              when (Help `elem` fls) help
-                              when (Version `elem` fls) version
+                              when (hasFlag Help) help
+                              when (hasFlag Version) version
                               when (isNothing pm)
                                 $ err
                                 $ unwords [ "Unknown package manager:"
                                           , fromJust pmSpec]
                               return (action, fromJust pm)
   where
-    upgrade = Upgrade `elem` fls
-    check = Check `elem` fls
+    hasFlag f = f `elem` fls
+
+    upgrade = hasFlag Upgrade
+    check = hasFlag Check
     action | upgrade == check = Both
            | upgrade          = GhcUpgrade
            | otherwise        = DepCheck
