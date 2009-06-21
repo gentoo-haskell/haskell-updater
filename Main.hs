@@ -17,6 +17,8 @@ import Distribution.Gentoo.PkgManager
 import Data.Char(toLower)
 import Data.List(find)
 import Data.Maybe(fromJust, isNothing)
+import Data.Version(showVersion)
+import qualified Paths_haskell_updater as Paths(version)
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
@@ -88,6 +90,7 @@ argParser (fls, oth, []) = do unless (null oth)
                                 $ putErrLn
                                 $ unwords $ "Unknown options:" : oth
                               when (Help `elem` fls) help
+                              when (Version `elem` fls) version
                               when (isNothing pm)
                                 $ err
                                 $ unwords [ "Unknown package manager:"
@@ -112,6 +115,9 @@ argParser (_, _, errs)   = die $ unwords $ "Errors in arguments:" : errs
 
 help :: IO a
 help = progInfo >>= success
+
+version :: IO a
+version = fmap (++ '-' : (showVersion Paths.version)) getProgName >>= success
 
 err     :: String -> IO a
 err msg = liftM addMsg progInfo >>= die
