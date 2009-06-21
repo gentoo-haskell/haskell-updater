@@ -14,6 +14,7 @@ import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 
+import Data.Char(toLower)
 import Data.List(find)
 import Data.Maybe(fromJust, isNothing)
 import System.Console.GetOpt
@@ -100,7 +101,11 @@ argParser (fls, oth, []) = do unless (null oth)
            | otherwise        = DepCheck
 
     pmSpec = fmap unPM $ find isPM fls
-    pm = maybe (Just portage) choosePM pmSpec
+    pm = maybe (Just defaultPM) choosePM pmSpec
+
+    choosePM str = find ((==) str' . name) packageManagers
+        where
+          str' = map toLower str
 
 argParser (_, _, errs)   = die $ unwords $ "Errors in arguments:" : errs
 
@@ -148,19 +153,20 @@ unPM _       = error "unPM only valid if isPM is true."
 
 options :: [OptDescr Flag]
 options =
-  [ Option ['c']      ["dep-check"]       (NoArg Check)
-            "Check dependencies of Haskell packages."
-  , Option ['u']      ["upgrade"]         (NoArg Upgrade)
-            "Rebuild Haskell packages after a GHC upgrade."
-  , Option ['P']      ["package-manager"] (ReqArg PM "PM")
-            "Use package manager PM, where PM can be one of:\n\
-              \  * portage (default)\n\
-              \  * pkgcore\n\
-              \  * paludis"
-  , Option ['p']      ["pretend"]         (NoArg Pretend)
-            "Only pretend to build packages, currently ignored."
-  , Option ['v']      ["version"]         (NoArg Version)
-            "Version information."
-  , Option ['h', '?'] ["help"]            (NoArg Help)
-            "Print this help message."
-  ]
+    [ Option ['c']      ["dep-check"]       (NoArg Check)
+      "Check dependencies of Haskell packages."
+    , Option ['u']      ["upgrade"]         (NoArg Upgrade)
+      "Rebuild Haskell packages after a GHC upgrade."
+    , Option ['P']      ["package-manager"] (ReqArg PM "PM")
+      $ "Use package manager PM, where PM can be one of:\n"
+            ++ pmList ++ defPM
+    , Option ['p']      ["pretend"]         (NoArg Pretend)
+      "Only pretend to build packages, currently ignored."
+    , Option ['v']      ["version"]         (NoArg Version)
+      "Version information."
+    , Option ['h', '?'] ["help"]            (NoArg Help)
+      "Print this help message."
+    ]
+    where
+      pmList = unlines . map ((++) "  * " . name) $ packageManagers
+      defPM = "The default package manager is: " ++ (name defaultPM)

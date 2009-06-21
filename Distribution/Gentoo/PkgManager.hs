@@ -10,17 +10,15 @@
  -}
 module Distribution.Gentoo.PkgManager
        ( PkgManager
-       , portage
-       , pkgcore
-       , paludis
-       , choosePM
+       , name
+       , packageManagers
+       , defaultPM
        , dummy
        , buildPkgs
        ) where
 
 import Distribution.Gentoo.Packages
 
-import Data.List(find)
 import System.Process(system)
 import System.Exit(ExitCode)
 
@@ -33,11 +31,11 @@ type Name = String
 type Command = String
 type Option = String
 
-choosePM     :: String -> Maybe PkgManager
-choosePM str = fmap snd $ find ((==) str . fst) pmNames
-  where
-    pmNames = map ((,) =<< name) pms
-    pms = [portage, pkgcore, paludis]
+packageManagers :: [PkgManager]
+packageManagers = [portage, pkgcore, paludis]
+
+defaultPM :: PkgManager
+defaultPM = portage
 
 portage :: PkgManager
 portage = PM "portage" "emerge" ["--deep", "--oneshot", "--keep-going"]
