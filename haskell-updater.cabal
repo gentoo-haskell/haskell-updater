@@ -23,7 +23,8 @@ Executable haskell-updater {
     Other-Modules:      Distribution.Gentoo.GHC,
                         Distribution.Gentoo.Util,
                         Distribution.Gentoo.Packages,
-                        Distribution.Gentoo.PkgManager
+                        Distribution.Gentoo.PkgManager,
+                        Paths_haskell_updater
     Ghc-Options:        -Wall
     Ghc-Prof-Options:   -auto-all
 
