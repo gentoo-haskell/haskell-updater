@@ -28,6 +28,11 @@ Executable haskell-updater {
     Ghc-Options:        -Wall
     Ghc-Prof-Options:   -auto-all
 
-    Build-Depends:      base >= 3 && < 5, Cabal >= 1.6 && < 1.7, containers,
-                        filepath, directory, bytestring, process
+    Build-Depends:      base >= 3 && < 5,
+                        Cabal >= 1.6 && < 1.7,
+                        containers < 0.3,
+                        filepath   < 1.2,
+                        directory  < 1.1,
+                        bytestring < 1.0,
+                        process    < 1.1
 }
