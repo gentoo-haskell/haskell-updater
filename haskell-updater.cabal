@@ -16,6 +16,7 @@ Author:              Ivan Lazar Miljenovic,
 Maintainer:          Ivan.Miljenovic@gmail.com
 Cabal-Version:       >= 1.2
 Build-Type:          Simple
+Extra-Source-Files:  TODO
 
 Executable haskell-updater {
 
