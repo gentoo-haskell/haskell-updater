@@ -29,7 +29,16 @@ import Control.Monad(liftM, liftM2, when, unless)
 -- The overall program.
 
 main :: IO ()
-main = parseArgs >>= uncurry actionOf
+main = do flags <- parseArgs
+          -- Do this after parseArgs in case of --help, etc.
+          ver    <- ghcVersion
+          pName  <- getProgName
+          pLoc   <- ghcLoc
+          libDir <- ghcLibDir
+          putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
+          putStrLn $ "with executable in " ++ pLoc
+          putStrLn $ "and library directory of " ++ libDir
+          uncurry actionOf flags
 
 data Action = DepCheck | GhcUpgrade | Both
             deriving (Eq, Show)
@@ -56,21 +65,20 @@ putErrLn = hPutStrLn stderr
 -- -----------------------------------------------------------------------------
 -- Finding and rebuilding packages
 
-ghcUpgrade    :: PkgManager -> IO a
-ghcUpgrade pm = do putStrLn "Looking for packages from old GHC installs..."
-                   buildPkgsFrom rebuildPkgs pm
+ghcUpgrade :: PkgManager -> IO a
+ghcUpgrade = buildPkgsFrom rebuildPkgs
 
-ghcCheck    :: PkgManager -> IO a
-ghcCheck pm = do putStrLn "Looking for packages that need to rebuilt..."
-                 buildPkgsFrom brokenPkgs pm
+ghcCheck :: PkgManager -> IO a
+ghcCheck = buildPkgsFrom brokenPkgs
 
 ghcBoth    :: PkgManager -> IO a
-ghcBoth pm = do putStrLn "Looking for packages from both old GHC \
-                          \installs, and those that need to be rebuilt..."
+ghcBoth pm = do putStrLn "\nLooking for packages from both old GHC \
+                          \installs, and those that need to be rebuilt."
                 flip buildPkgsFrom pm $ liftM2 (++) brokenPkgs rebuildPkgs
 
 buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO a
 buildPkgsFrom ps pm = do ps' <- ps
+                         putStrLn "" -- blank line
                          if null ps'
                            then success "Nothing to build!"
                            else buildPkgs pm ps' >>= exitWith
@@ -122,7 +130,7 @@ help :: IO a
 help = progInfo >>= success
 
 version :: IO a
-version = fmap (++ '-' : (showVersion Paths.version)) getProgName >>= success
+version = fmap (++ '-' : showVersion Paths.version) getProgName >>= success
 
 err     :: String -> IO a
 err msg = liftM addMsg progInfo >>= die
@@ -180,4 +188,4 @@ options =
     ]
     where
       pmList = unlines . map ((++) "  * " . name) $ packageManagers
-      defPM = "The default package manager is: " ++ (name defaultPM)
+      defPM = "The default package manager is: " ++ name defaultPM

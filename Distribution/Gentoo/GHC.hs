@@ -10,10 +10,11 @@
  -}
 module Distribution.Gentoo.GHC
        ( ghcVersion
+       , ghcLoc
+       , ghcLibDir
        , libFronts
        , rebuildPkgs
        , brokenPkgs
-       , ghcLibDir
        ) where
 
 import Distribution.Gentoo.Util
@@ -36,7 +37,7 @@ import Distribution.InstalledPackageInfo( InstalledPackageInfo
 
 -- Other imports
 import Data.Char(isDigit)
-import Data.Maybe(catMaybes)
+import Data.Maybe(catMaybes, fromJust)
 import qualified Data.Map as Map
 import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
@@ -48,18 +49,21 @@ import Control.Monad(foldM, liftM)
 
 -- -----------------------------------------------------------------------------
 
--- common helper utils, etc.
+-- Common helper utils, etc.
 
 -- Get only the first line of output
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
 rawSysStdOutLine app = liftM (head . lines) . rawSystemStdout silent app
 
 -- Get the first line of output from calling GHC with the given
--- arguments.  Cheat with using (Just ...) since we know that GHC
--- must be in $PATH somewhere, probably /usr/bin
+-- arguments.
 ghcRawOut      :: [String] -> IO String
-ghcRawOut args = do (Just ghc) <- findExecutable "ghc"
-                    rawSysStdOutLine ghc args
+ghcRawOut args = ghcLoc >>= flip rawSysStdOutLine args
+
+-- Cheat with using fromJust since we know that GHC must be in $PATH
+-- somewhere, probably /usr/bin
+ghcLoc :: IO FilePath
+ghcLoc = liftM fromJust $ findExecutable "ghc"
 
 ghcVersion :: IO String
 ghcVersion = liftM (dropWhile (not . isDigit))
@@ -80,18 +84,30 @@ confFiles dir = do let gDir = dir </> "gentoo"
   where
     isConf file = takeExtension file == ".conf"
 
+pkgListPrint :: String -> [Package] -> IO ()
+pkgListPrint desc pkgs
+    = if null pkgs
+      then putStrLn $ unwords ["No", desc, "packages found!"]
+      else do putStrLn $ unwords ["Found the following"
+                                 , desc, "packages:"]
+              mapM_ (putStrLn . (++) "  * " . printPkg) pkgs
+
 -- -----------------------------------------------------------------------------
 
--- Upgrading
+-- Finding packages installed with other versions of GHC
 
 rebuildPkgs :: IO [Package]
-rebuildPkgs = do thisGhc <- ghcLibDir
+rebuildPkgs = do putStrLn "\nFinding packages installed with a \
+                          \different version of GHC."
+                 thisGhc <- ghcLibDir
                  let thisGhc' = BS.pack thisGhc
                  -- It would be nice to do this, but we can't assume
                  -- some crazy user hasn't deleted one of these dirs
                  -- libFronts' <- filterM doesDirectoryExist libFronts
-                 pkgs <- concatMapM (checkLibDir thisGhc') libFronts
-                 return $ notGHC pkgs
+                 pkgs <- liftM notGHC
+                         $ concatMapM (checkLibDir thisGhc') libFronts
+                 pkgListPrint "old" pkgs
+                 return pkgs
 
 checkLibDir                :: BSFilePath -> FilePath -> IO [Package]
 checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
@@ -114,12 +130,14 @@ libFronts = do loc <- ["usr", "opt" </> "ghc"]
 
 -- -----------------------------------------------------------------------------
 
--- Fixing
+-- Finding broken packages
 
 brokenPkgs :: IO [Package]
-brokenPkgs = do cnfs <- brokenConfs
-                mPkgs <- mapM hasFile cnfs
-                return $ notGHC $ catMaybes mPkgs
+brokenPkgs = do putStrLn "\nFinding Haskell libraries with broken dependencies."
+                cnfs <- brokenConfs
+                pkgs <- liftM (notGHC . catMaybes) $ mapM hasFile cnfs
+                pkgListPrint "broken" pkgs
+                return pkgs
 
 -- .conf files from broken packages of this GHC version
 brokenConfs :: IO [FilePath]
