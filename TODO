@@ -1,3 +1,2 @@
-* List broken libs that don't have corresponding packages
 * Allow user-defined PMs (in case they have custom scripts, etc.)
 * Pretty colours in output?

@@ -34,10 +34,12 @@ import Distribution.Package(PackageName, packageName)
 import Distribution.InstalledPackageInfo( InstalledPackageInfo
                                         , InstalledPackageInfo_
                                         , package)
+import Distribution.Text(display)
 
 -- Other imports
 import Data.Char(isDigit)
-import Data.Maybe(catMaybes, fromJust)
+import Data.Either(Either(..), partitionEithers)
+import Data.Maybe(Maybe(..), maybe, fromJust)
 import qualified Data.Map as Map
 import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
@@ -45,7 +47,7 @@ import System.FilePath((</>), takeExtension)
 import System.Directory( canonicalizePath
                        , doesDirectoryExist
                        , findExecutable)
-import Control.Monad(foldM, liftM)
+import Control.Monad(foldM, liftM, unless)
 
 -- -----------------------------------------------------------------------------
 
@@ -90,7 +92,13 @@ pkgListPrint desc pkgs
       then putStrLn $ unwords ["No", desc, "packages found!"]
       else do putStrLn $ unwords ["Found the following"
                                  , desc, "packages:"]
-              mapM_ (putStrLn . (++) "  * " . printPkg) pkgs
+              printList printPkg pkgs
+
+printList   :: (a -> String) -> [a] -> IO ()
+printList f = mapM_ (putStrLn . (++) "  * " . f)
+
+tryMaybe     :: (a -> Maybe b) -> a -> Either a b
+tryMaybe f a = maybe (Left a) Right $ f a
 
 -- -----------------------------------------------------------------------------
 
@@ -134,23 +142,45 @@ libFronts = do loc <- ["usr", "opt" </> "ghc"]
 
 brokenPkgs :: IO [Package]
 brokenPkgs = do putStrLn "\nFinding Haskell libraries with broken dependencies."
-                cnfs <- brokenConfs
-                pkgs <- liftM (notGHC . catMaybes) $ mapM hasFile cnfs
-                pkgListPrint "broken" pkgs
+                (pns, cnfs) <- brokenConfs
+                unless (null pns)
+                           $ unknownPackages pns
+                (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
+                unless (null nI)
+                           $ unknownFiles nI
+                let pkgs' = notGHC pkgs
+                pkgListPrint "broken" pkgs'
                 return pkgs
+    where
+      hasFile' f = do mp <- hasFile f
+                      return $ maybe (Left f) Right mp
+
+      unknownPackages ps
+          = do putStrLn "\nThe following packages don't seem \
+                        \to have been installed by your package manager:"
+               printList display ps
+
+      unknownFiles fs
+          = do putStrLn "\nThe following files are those corresponding \
+                         \to packages installed by your package manager\n\
+                         \which can't be matched up to the packages that own them."
+               printList id fs
 
 -- .conf files from broken packages of this GHC version
-brokenConfs :: IO [FilePath]
+brokenConfs :: IO ([PackageName], [FilePath])
 brokenConfs = do brkn <- getBroken
                  -- Check if we actually have to go look up files and
                  -- do IO.
                  if null brkn
-                   then return []
+                   then return ([], [])
                    else do cnfs <- readConf
-                           -- Need to think about what to do if PN \notin cnfs
-                           return $ catMaybes $ map (flip Map.lookup cnfs) brkn
+                           return $ partitionEithers
+                                      $ map (matchConf cnfs) brkn
 
 type ConfMap = Map PackageName FilePath
+
+matchConf :: ConfMap -> PackageName -> Either PackageName FilePath
+matchConf = tryMaybe . flip Map.lookup
 
 -- Read in all Gentoo .conf files from the current GHC version and
 -- create a Map
