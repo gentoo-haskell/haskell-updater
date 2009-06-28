@@ -105,7 +105,7 @@ tryMaybe f a = maybe (Left a) Right $ f a
 -- Finding packages installed with other versions of GHC
 
 rebuildPkgs :: IO [Package]
-rebuildPkgs = do putStrLn "\nFinding packages installed with a \
+rebuildPkgs = do putStrLn "\nSearching for packages installed with a \
                           \different version of GHC."
                  thisGhc <- ghcLibDir
                  let thisGhc' = BS.pack thisGhc
@@ -141,7 +141,7 @@ libFronts = do loc <- ["usr", "opt" </> "ghc"]
 -- Finding broken packages
 
 brokenPkgs :: IO [Package]
-brokenPkgs = do putStrLn "\nFinding Haskell libraries with broken dependencies."
+brokenPkgs = do putStrLn "\nSearching Haskell libraries with broken dependencies."
                 (pns, cnfs) <- brokenConfs
                 unless (null pns)
                            $ unknownPackages pns
