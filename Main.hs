@@ -117,7 +117,8 @@ argParser (fls, oth, []) = do unless (null oth)
     enablePretend = if hasFlag Pretend
                     then setPretend
                     else id
-    pm = fmap enablePretend $ maybe (Just defaultPM) choosePM pmSpec
+    enableNoDeep = setDeep (not (hasFlag NoDeep))
+    pm = fmap enableNoDeep $ fmap enablePretend $ maybe (Just defaultPM) choosePM pmSpec
 
     choosePM str = find ((==) str' . name) packageManagers
         where
@@ -160,6 +161,7 @@ data Flag = Help
           | Check
           | Upgrade
           | Pretend
+	  | NoDeep
           deriving (Eq, Show)
 
 isPM        :: Flag -> Bool
@@ -181,6 +183,8 @@ options =
             ++ pmList ++ defPM
     , Option ['p']      ["pretend"]         (NoArg Pretend)
       "Only pretend to build packages."
+    , Option []         ["no-deep"]         (NoArg NoDeep)
+      "Don't pull deep dependencies (--deep with emerge)."
     , Option ['v']      ["version"]         (NoArg Version)
       "Version information."
     , Option ['h', '?'] ["help"]            (NoArg Help)

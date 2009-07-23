@@ -15,6 +15,7 @@ module Distribution.Gentoo.PkgManager
        , defaultPM
        , dummy
        , setPretend
+       , setDeep
        , buildPkgs
        ) where
 
@@ -26,6 +27,7 @@ import System.Exit(ExitCode)
 data PkgManager = PM { name :: Name
                      , cmd  :: Command
                      , opts :: [Option]
+		     , deepOpt :: Bool -> [Option] -> [Option]
                      }
 
 type Name = String
@@ -39,17 +41,20 @@ defaultPM :: PkgManager
 defaultPM = portage
 
 portage :: PkgManager
-portage = PM "portage" "emerge" ["--deep", "--oneshot", "--keep-going"]
+portage = PM "portage" "emerge" ["--oneshot", "--keep-going"]
+				(\deep os -> ["--deep"|deep] ++ os)
 
 pkgcore :: PkgManager
 pkgcore = PM "pkgcore" "pmerge" ["--deep", "--oneshot", "--ignore-failures"]
+				(\deep os -> ["--deep"|deep] ++ os)
 
 paludis :: PkgManager
 paludis = PM "paludis" "paludis" ["--install", "--preserve-world"
-                                 , "--continue-on-failure if-independent"]
+                                 , "--continue-on-failure if-independent"
+				 ] (\deep os -> ["--dl-upgrade as-needed"|not deep] ++ os)
 
 dummy :: PkgManager
-dummy = PM "test PM" "echo" []
+dummy = PM "test PM" "echo" [] (\deep os -> (if deep then "--deep" else "--no-deep") : os)
 
 -- All 3 PMs use --pretend to show what packages they would build;
 -- assume that they are all like this.
@@ -57,6 +62,9 @@ setPretend    :: PkgManager -> PkgManager
 setPretend pm = pm { opts = pOpt : opts pm }
     where
       pOpt = "--pretend"
+
+setDeep :: Bool -> PkgManager -> PkgManager
+setDeep isDeep pm = pm { opts = deepOpt pm isDeep (opts pm)}
 
 buildPkgs    :: PkgManager -> [Package] -> IO ExitCode
 buildPkgs pm = system . buildCmd pm
