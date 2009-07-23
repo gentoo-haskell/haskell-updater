@@ -67,7 +67,11 @@ setDeep :: Bool -> PkgManager -> PkgManager
 setDeep isDeep pm = pm { opts = deepOpt pm isDeep (opts pm)}
 
 buildPkgs    :: PkgManager -> [Package] -> IO ExitCode
-buildPkgs pm = system . buildCmd pm
+buildPkgs pm pkgs = do
+  putStrLn ("executing: " ++ cmd)
+  system cmd
+  where
+    cmd = buildCmd pm pkgs
 
 buildCmd       :: PkgManager -> [Package] -> Command
 buildCmd pm ps = unwords $ pmc ++ ps'
