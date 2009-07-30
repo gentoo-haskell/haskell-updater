@@ -16,14 +16,13 @@ import Distribution.Gentoo.PkgManager
 
 import Data.Char(toLower)
 import Data.List(find)
-import Data.Maybe(fromJust, isNothing)
 import Data.Version(showVersion)
 import qualified Paths_haskell_updater as Paths(version)
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
-import Control.Monad(liftM, liftM2, when, unless)
+import Control.Monad(liftM, liftM2, when, unless, msum)
 
 -- -----------------------------------------------------------------------------
 -- The overall program.
@@ -99,11 +98,10 @@ argParser (fls, oth, []) = do unless (null oth)
                                 $ unwords $ "Unknown options:" : oth
                               when (hasFlag Help) help
                               when (hasFlag Version) version
-                              when (isNothing pm)
-                                $ err
-                                $ unwords [ "Unknown package manager:"
-                                          , fromJust pmSpec]
-                              return (action, fromJust pm)
+                              case pm of
+                                Left unknownPkgMgr -> err $ unwords [ "Unknown package manager:"
+                                                                    , unknownPkgMgr ]
+                                Right pm' -> return (action, pm')
   where
     hasFlag f = f `elem` fls
 
@@ -113,12 +111,11 @@ argParser (fls, oth, []) = do unless (null oth)
            | upgrade          = GhcUpgrade
            | otherwise        = DepCheck
 
-    pmSpec = fmap unPM $ find isPM fls
+    pmSpec = msum $ map getPM fls
     enablePretend = if hasFlag Pretend
                     then setPretend
                     else id
-    enableNoDeep = setDeep (not (hasFlag NoDeep))
-    pm = fmap enableNoDeep $ fmap enablePretend $ maybe (Just defaultPM) choosePM pmSpec
+    pm = fmap enablePretend $ maybe (Just defaultPM) choosePM pmSpec
 
     choosePM str = find ((==) str' . name) packageManagers
         where
@@ -164,13 +161,9 @@ data Flag = Help
 	  | NoDeep
           deriving (Eq, Show)
 
-isPM        :: Flag -> Bool
-isPM (PM _) = True
-isPM _      = False
-
-unPM         :: Flag -> String
-unPM (PM pm) = pm
-unPM _       = error "unPM only valid if isPM is true."
+getPM :: Flag -> Maybe String
+getPM (PM pm) = Just pm
+getPM _       = Nothing
 
 options :: [OptDescr Flag]
 options =
