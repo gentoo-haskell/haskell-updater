@@ -115,7 +115,14 @@ argParser (fls, oth, []) = do unless (null oth)
     enablePretend = if hasFlag Pretend
                     then setPretend
                     else id
-    pm = fmap enablePretend $ maybe (Just defaultPM) choosePM pmSpec
+
+    enableNoDeep = setDeep (not (hasFlag NoDeep))
+    pm = fmap enableNoDeep $ fmap enablePretend $
+         case pmSpec of
+           Nothing -> Right defaultPM
+           Just pmSpec' -> case choosePM pmSpec' of
+                             Nothing -> Left pmSpec'
+                             Just pm' -> Right pm'
 
     choosePM str = find ((==) str' . name) packageManagers
         where
