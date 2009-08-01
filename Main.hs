@@ -39,13 +39,10 @@ main = do flags <- parseArgs
           putStrLn $ "and library directory of " ++ libDir
           uncurry actionOf flags
 
-data Action = DepCheck | GhcUpgrade | Both
-            deriving (Eq, Show)
+data Action = Rebuild (IO [Package])
 
 actionOf            :: Action -> PkgManager -> IO a
-actionOf DepCheck   = ghcCheck
-actionOf GhcUpgrade = ghcUpgrade
-actionOf Both       = ghcBoth
+actionOf (Rebuild iopkgs) = buildPkgsFrom iopkgs
 
 -- -----------------------------------------------------------------------------
 -- Utility functions
@@ -63,17 +60,6 @@ putErrLn = hPutStrLn stderr
 
 -- -----------------------------------------------------------------------------
 -- Finding and rebuilding packages
-
-ghcUpgrade :: PkgManager -> IO a
-ghcUpgrade = buildPkgsFrom rebuildPkgs
-
-ghcCheck :: PkgManager -> IO a
-ghcCheck = buildPkgsFrom brokenPkgs
-
-ghcBoth    :: PkgManager -> IO a
-ghcBoth pm = do putStrLn "\nLooking for packages from both old GHC \
-                          \installs, and those that need to be rebuilt."
-                flip buildPkgsFrom pm $ liftM2 (++) brokenPkgs rebuildPkgs
 
 buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO a
 buildPkgsFrom ps pm = do ps' <- ps
@@ -107,9 +93,15 @@ argParser (fls, oth, []) = do unless (null oth)
 
     upgrade = hasFlag Upgrade
     check = hasFlag Check
-    action | upgrade == check = Both
-           | upgrade          = GhcUpgrade
-           | otherwise        = DepCheck
+    packagesToRebuild
+        | upgrade == check = putStrLn bothMsg >> liftM2 (++) brokenPkgs rebuildPkgs
+        | upgrade          = rebuildPkgs
+        | otherwise        = brokenPkgs
+
+    bothMsg = "\nLooking for packages from both old GHC \
+              \installs, and those that need to be rebuilt."
+
+    action = Rebuild packagesToRebuild
 
     pmSpec = msum $ map getPM fls
     enablePretend = if hasFlag Pretend
