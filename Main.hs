@@ -20,6 +20,7 @@ import Data.Version(showVersion)
 import qualified Paths_haskell_updater as Paths(version)
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
+import System.Process(system)
 import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
 import Control.Monad(liftM, liftM2, when, unless, msum)
@@ -40,9 +41,11 @@ main = do flags <- parseArgs
           uncurry actionOf flags
 
 data Action = Rebuild (IO [Package])
+            | PrintCommand (IO [Package])
 
 actionOf            :: Action -> PkgManager -> IO a
-actionOf (Rebuild iopkgs) = buildPkgsFrom iopkgs
+actionOf (Rebuild iopkgs)      = buildPkgsFrom iopkgs
+actionOf (PrintCommand iopkgs) = withPkgsDo printPkgs iopkgs
 
 -- -----------------------------------------------------------------------------
 -- Utility functions
@@ -61,12 +64,23 @@ putErrLn = hPutStrLn stderr
 -- -----------------------------------------------------------------------------
 -- Finding and rebuilding packages
 
-buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO a
-buildPkgsFrom ps pm = do ps' <- ps
-                         putStrLn "" -- blank line
-                         if null ps'
-                           then success "Nothing to build!"
-                           else buildPkgs pm ps' >>= exitWith
+withPkgsDo       :: (PkgManager -> [Package] -> IO ExitCode) -> IO [Package] -> PkgManager ->  IO a
+withPkgsDo f ps pm = do ps' <- ps
+                        putStrLn "" -- blank line
+                        if null ps'
+                         then success "Nothing to build!"
+                         else f pm ps' >>= exitWith
+
+buildPkgsFrom :: IO [Package] -> PkgManager ->  IO a
+buildPkgsFrom = withPkgsDo buildPkgs
+
+-- quote every argument, so long command that is wrapped in terminal
+-- can be marked with mouse and copy-pasted where needed
+printPkgs :: PkgManager -> [Package] -> IO ExitCode
+printPkgs pm ps = system cmd
+    where cmd = "echo " ++ buildCmd (quote . printPkg) pm ps
+          quote s = "\\'" ++ s ++ "\\'" -- escape quotes to force echo to print them
+
 
 -- -----------------------------------------------------------------------------
 -- Command-line arguments
@@ -101,7 +115,7 @@ argParser (fls, oth, []) = do unless (null oth)
     bothMsg = "\nLooking for packages from both old GHC \
               \installs, and those that need to be rebuilt."
 
-    action = Rebuild packagesToRebuild
+    action = (if hasFlag PrintOnly then PrintCommand else Rebuild) packagesToRebuild
 
     pmSpec = msum $ map getPM fls
     enablePretend = if hasFlag Pretend
@@ -158,6 +172,7 @@ data Flag = Help
           | Upgrade
           | Pretend
 	  | NoDeep
+          | PrintOnly
           deriving (Eq, Show)
 
 getPM :: Flag -> Maybe String
@@ -181,6 +196,8 @@ options =
       "Version information."
     , Option ['h', '?'] ["help"]            (NoArg Help)
       "Print this help message."
+    , Option [] ["print-only"]              (NoArg PrintOnly)
+      "Only print install command."
     ]
     where
       pmList = unlines . map ((++) "  * " . name) $ packageManagers

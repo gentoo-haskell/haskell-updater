@@ -1,7 +1,5 @@
 * Allow user-defined PMs (in case they have custom scripts, etc.)
 
-* Have the option to spit out the PM command to be used instead of using it.
-
 * Pretty colours in output?
 
 * Detect packages that are installed but not registered with GHC.

@@ -17,6 +17,7 @@ module Distribution.Gentoo.PkgManager
        , setPretend
        , setDeep
        , buildPkgs
+       , buildCmd
        ) where
 
 import Distribution.Gentoo.Packages
@@ -71,10 +72,10 @@ buildPkgs pm pkgs = do
   putStrLn ("executing: " ++ cmd)
   system cmd
   where
-    cmd = buildCmd pm pkgs
+    cmd = buildCmd printPkg pm pkgs
 
-buildCmd       :: PkgManager -> [Package] -> Command
-buildCmd pm ps = unwords $ pmc ++ ps'
+buildCmd       :: (Package -> String) -> PkgManager -> [Package] -> Command
+buildCmd pretty pm ps = unwords $ pmc ++ ps'
   where
     pmc = cmd pm : opts pm
-    ps' = map printPkg ps
+    ps' = map pretty ps
