@@ -7,6 +7,3 @@
   properly re-registered.
 
 * Add an --info option to give us information on haskell-packages, etc.
-
-* We should use (Name, Version) when creating the Map of .conf files, in
-  case of breakages of slotted libs.

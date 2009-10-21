@@ -30,7 +30,7 @@ import Distribution.Simple.Program( ProgramConfiguration
 import Distribution.Simple.Compiler(PackageDB(GlobalPackageDB))
 import Distribution.Simple.Utils(rawSystemStdout)
 import Distribution.Verbosity(silent)
-import Distribution.Package(PackageName, packageName)
+import Distribution.Package(PackageIdentifier, packageId)
 import Distribution.InstalledPackageInfo( InstalledPackageInfo
                                         , InstalledPackageInfo_
                                         , installedPackageId)
@@ -167,7 +167,7 @@ brokenPkgs = do putStrLn "\nSearching Haskell libraries with broken dependencies
                printList id fs
 
 -- .conf files from broken packages of this GHC version
-brokenConfs :: IO ([PackageName], [FilePath])
+brokenConfs :: IO ([PackageIdentifier], [FilePath])
 brokenConfs = do brkn <- getBroken
                  -- Check if we actually have to go look up files and
                  -- do IO.
@@ -177,9 +177,9 @@ brokenConfs = do brkn <- getBroken
                            return $ partitionEithers
                                       $ map (matchConf cnfs) brkn
 
-type ConfMap = Map PackageName FilePath
+type ConfMap = Map PackageIdentifier FilePath
 
-matchConf :: ConfMap -> PackageName -> Either PackageName FilePath
+matchConf :: ConfMap -> PackageIdentifier -> Either PackageIdentifier FilePath
 matchConf = tryMaybe . flip Map.lookup
 
 -- Read in all Gentoo .conf files from the current GHC version and
@@ -201,8 +201,8 @@ addConf cmp conf = do cnts <- readFile conf
 
   where
     -- It's not InstalledPackageInfo, as it can't read the modules
-    cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageName
-    cfNm = packageName . head . fst . head
+    cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
+    cfNm = packageId . head . fst . head
 
 -- Obtain GHC info about installed libs, etc.
 configureGHC :: IO ProgramConfiguration
@@ -214,7 +214,7 @@ pkgIndex :: IO PackageIndex
 pkgIndex = configureGHC >>= getInstalledPackages silent [GlobalPackageDB]
 
 -- Return the closure of all packages affected by breakage
-getBroken :: IO [PackageName]
+getBroken :: IO [PackageIdentifier]
 getBroken = do ind <- pkgIndex
                let broken = map (installedPackageId . fst) $ brokenPackages ind
-               return $ map packageName $ reverseDependencyClosure ind broken
+               return $ map packageId $ reverseDependencyClosure ind broken
