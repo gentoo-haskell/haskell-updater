@@ -30,7 +30,7 @@ Executable haskell-updater {
     Ghc-Prof-Options:   -auto-all
 
     Build-Depends:      base >= 3 && < 5,
-                        Cabal >= 1.6 && < 1.7,
+                        Cabal >= 1.8 && < 1.9,
                         containers < 0.3,
                         filepath   < 1.2,
                         directory  < 1.1,

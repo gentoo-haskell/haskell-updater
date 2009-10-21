@@ -33,7 +33,7 @@ import Distribution.Verbosity(silent)
 import Distribution.Package(PackageName, packageName)
 import Distribution.InstalledPackageInfo( InstalledPackageInfo
                                         , InstalledPackageInfo_
-                                        , package)
+                                        , installedPackageId)
 import Distribution.Text(display)
 
 -- Other imports
@@ -210,11 +210,11 @@ configureGHC = liftM snd
                $ configure silent Nothing Nothing defaultProgramConfiguration
 
 -- Return all packages registered with GHC
-pkgIndex :: IO (PackageIndex InstalledPackageInfo)
-pkgIndex = configureGHC >>= getInstalledPackages silent GlobalPackageDB
+pkgIndex :: IO PackageIndex
+pkgIndex = configureGHC >>= getInstalledPackages silent [GlobalPackageDB]
 
 -- Return the closure of all packages affected by breakage
 getBroken :: IO [PackageName]
 getBroken = do ind <- pkgIndex
-               let broken = map (package . fst) $ brokenPackages ind
+               let broken = map (installedPackageId . fst) $ brokenPackages ind
                return $ map packageName $ reverseDependencyClosure ind broken
