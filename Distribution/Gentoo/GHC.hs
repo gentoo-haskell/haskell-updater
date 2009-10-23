@@ -63,14 +63,15 @@ ghcRawOut      :: [String] -> IO String
 ghcRawOut args = ghcLoc >>= flip rawSysStdOutLine args
 
 -- Cheat with using fromJust since we know that GHC must be in $PATH
--- somewhere, probably /usr/bin
+-- somewhere, probably /usr/bin.
 ghcLoc :: IO FilePath
 ghcLoc = liftM fromJust $ findExecutable "ghc"
 
+-- The version of GHC installed.
 ghcVersion :: IO String
-ghcVersion = liftM (dropWhile (not . isDigit))
-             $ ghcRawOut ["--version"]
+ghcVersion = liftM (dropWhile (not . isDigit)) $ ghcRawOut ["--version"]
 
+-- The directory where GHC has all its libraries, etc.
 ghcLibDir :: IO FilePath
 ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
 
@@ -86,6 +87,7 @@ confFiles dir = do let gDir = dir </> "gentoo"
   where
     isConf file = takeExtension file == ".conf"
 
+-- Print a list of packages, with a description of what they are.
 pkgListPrint :: String -> [Package] -> IO ()
 pkgListPrint desc pkgs
     = if null pkgs
@@ -94,6 +96,7 @@ pkgListPrint desc pkgs
                                  , desc, "packages:"]
               printList printPkg pkgs
 
+-- Print a bullet list of values with one value per line.
 printList   :: (a -> String) -> [a] -> IO ()
 printList f = mapM_ (putStrLn . (++) "  * " . f)
 
@@ -103,7 +106,6 @@ tryMaybe f a = maybe (Left a) Right $ f a
 -- -----------------------------------------------------------------------------
 
 -- Finding packages installed with other versions of GHC
-
 rebuildPkgs :: IO [Package]
 rebuildPkgs = do putStrLn "\nSearching for packages installed with a \
                           \different version of GHC."
@@ -117,6 +119,8 @@ rebuildPkgs = do putStrLn "\nSearching for packages installed with a \
                  pkgListPrint "old" pkgs
                  return pkgs
 
+-- Find packages installed by other versions of GHC in this possible
+-- library directory.
 checkLibDir                :: BSFilePath -> FilePath -> IO [Package]
 checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
   where
@@ -143,8 +147,7 @@ libFronts = do loc <- ["usr", "opt" </> "ghc"]
 
 -- -----------------------------------------------------------------------------
 
--- Finding broken packages
-
+-- Finding broken packages in this install of GHC.
 brokenPkgs :: IO [Package]
 brokenPkgs = do putStrLn "\nSearching Haskell libraries with broken dependencies."
                 (pns, cnfs) <- brokenConfs
@@ -184,6 +187,8 @@ brokenConfs = do brkn <- getBroken
 
 type ConfMap = Map PackageIdentifier FilePath
 
+-- Attempt to match the provided broken package to one of the
+-- installed packages.
 matchConf :: ConfMap -> PackageIdentifier -> Either PackageIdentifier FilePath
 matchConf = tryMaybe . flip Map.lookup
 
