@@ -128,7 +128,12 @@ checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
     isInvalid dir = any (flip BS.isPrefixOf dir)
                     $ thisGhc : map (BS.pack . (</>) libDir) disAllowedDirs
     -- Use a list here in case we have to add more later
-    disAllowedDirs = ["ghc-paths"]
+    disAllowedDirs = map ("ghc-" ++)
+                     [ "events"
+                     , "mtl"
+                     , "paths"
+                     , "syb"
+                     ]
 
 -- The possible places GHC could have installed lib directories
 libFronts :: [FilePath]
