@@ -16,14 +16,14 @@ import Distribution.Gentoo.PkgManager
 
 import Data.Char(toLower)
 import Data.List(find)
+import Data.Maybe(fromJust, isNothing)
 import Data.Version(showVersion)
 import qualified Paths_haskell_updater as Paths(version)
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
-import System.Process(system)
 import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
-import Control.Monad(liftM, liftM2, when, unless, msum)
+import Control.Monad(liftM, liftM2, when, unless)
 
 -- -----------------------------------------------------------------------------
 -- The overall program.
@@ -40,12 +40,13 @@ main = do flags <- parseArgs
           putStrLn $ "and library directory of " ++ libDir
           uncurry actionOf flags
 
-data Action = Rebuild (IO [Package])
-            | PrintCommand (IO [Package])
+data Action = DepCheck | GhcUpgrade | Both
+            deriving (Eq, Show)
 
 actionOf            :: Action -> PkgManager -> IO a
-actionOf (Rebuild iopkgs)      = buildPkgsFrom iopkgs
-actionOf (PrintCommand iopkgs) = withPkgsDo printPkgs iopkgs
+actionOf DepCheck   = ghcCheck
+actionOf GhcUpgrade = ghcUpgrade
+actionOf Both       = ghcBoth
 
 -- -----------------------------------------------------------------------------
 -- Utility functions
@@ -64,23 +65,23 @@ putErrLn = hPutStrLn stderr
 -- -----------------------------------------------------------------------------
 -- Finding and rebuilding packages
 
-withPkgsDo       :: (PkgManager -> [Package] -> IO ExitCode) -> IO [Package] -> PkgManager ->  IO a
-withPkgsDo f ps pm = do ps' <- ps
-                        putStrLn "" -- blank line
-                        if null ps'
-                         then success "Nothing to build!"
-                         else f pm ps' >>= exitWith
+ghcUpgrade :: PkgManager -> IO a
+ghcUpgrade = buildPkgsFrom rebuildPkgs
 
-buildPkgsFrom :: IO [Package] -> PkgManager ->  IO a
-buildPkgsFrom = withPkgsDo buildPkgs
+ghcCheck :: PkgManager -> IO a
+ghcCheck = buildPkgsFrom brokenPkgs
 
--- quote every argument, so long command that is wrapped in terminal
--- can be marked with mouse and copy-pasted where needed
-printPkgs :: PkgManager -> [Package] -> IO ExitCode
-printPkgs pm ps = system cmd
-    where cmd = "echo " ++ buildCmd (quote . printPkg) pm ps
-          quote s = "\\'" ++ s ++ "\\'" -- escape quotes to force echo to print them
+ghcBoth    :: PkgManager -> IO a
+ghcBoth pm = do putStrLn "\nLooking for packages from both old GHC \
+                          \installs, and those that need to be rebuilt."
+                flip buildPkgsFrom pm $ liftM2 (++) brokenPkgs rebuildPkgs
 
+buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO a
+buildPkgsFrom ps pm = do ps' <- ps
+                         putStrLn "" -- blank line
+                         if null ps'
+                           then success "Nothing to build!"
+                           else buildPkgs pm ps' >>= exitWith
 
 -- -----------------------------------------------------------------------------
 -- Command-line arguments
@@ -98,37 +99,26 @@ argParser (fls, oth, []) = do unless (null oth)
                                 $ unwords $ "Unknown options:" : oth
                               when (hasFlag Help) help
                               when (hasFlag Version) version
-                              case pm of
-                                Left unknownPkgMgr -> err $ unwords [ "Unknown package manager:"
-                                                                    , unknownPkgMgr ]
-                                Right pm' -> return (action, pm')
+                              when (isNothing pm)
+                                $ err
+                                $ unwords [ "Unknown package manager:"
+                                          , fromJust pmSpec]
+                              return (action, fromJust pm)
   where
     hasFlag f = f `elem` fls
 
     upgrade = hasFlag Upgrade
     check = hasFlag Check
-    packagesToRebuild
-        | upgrade == check = putStrLn bothMsg >> liftM2 (++) brokenPkgs rebuildPkgs
-        | upgrade          = rebuildPkgs
-        | otherwise        = brokenPkgs
+    action | upgrade == check = Both
+           | upgrade          = GhcUpgrade
+           | otherwise        = DepCheck
 
-    bothMsg = "\nLooking for packages from both old GHC \
-              \installs, and those that need to be rebuilt."
-
-    action = (if hasFlag PrintOnly then PrintCommand else Rebuild) packagesToRebuild
-
-    pmSpec = msum $ map getPM fls
+    pmSpec = fmap unPM $ find isPM fls
     enablePretend = if hasFlag Pretend
                     then setPretend
                     else id
-
     enableNoDeep = setDeep (not (hasFlag NoDeep))
-    pm = fmap enableNoDeep $ fmap enablePretend $
-         case pmSpec of
-           Nothing -> Right defaultPM
-           Just pmSpec' -> case choosePM pmSpec' of
-                             Nothing -> Left pmSpec'
-                             Just pm' -> Right pm'
+    pm = fmap enableNoDeep $ fmap enablePretend $ maybe (Just defaultPM) choosePM pmSpec
 
     choosePM str = find ((==) str' . name) packageManagers
         where
@@ -172,12 +162,15 @@ data Flag = Help
           | Upgrade
           | Pretend
 	  | NoDeep
-          | PrintOnly
           deriving (Eq, Show)
 
-getPM :: Flag -> Maybe String
-getPM (PM pm) = Just pm
-getPM _       = Nothing
+isPM        :: Flag -> Bool
+isPM (PM _) = True
+isPM _      = False
+
+unPM         :: Flag -> String
+unPM (PM pm) = pm
+unPM _       = error "unPM only valid if isPM is true."
 
 options :: [OptDescr Flag]
 options =
@@ -196,8 +189,6 @@ options =
       "Version information."
     , Option ['h', '?'] ["help"]            (NoArg Help)
       "Print this help message."
-    , Option [] ["print-only"]              (NoArg PrintOnly)
-      "Only print install command."
     ]
     where
       pmList = unlines . map ((++) "  * " . name) $ packageManagers

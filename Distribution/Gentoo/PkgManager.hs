@@ -17,7 +17,6 @@ module Distribution.Gentoo.PkgManager
        , setPretend
        , setDeep
        , buildPkgs
-       , buildCmd
        ) where
 
 import Distribution.Gentoo.Packages
@@ -69,13 +68,13 @@ setDeep isDeep pm = pm { opts = deepOpt pm isDeep (opts pm)}
 
 buildPkgs    :: PkgManager -> [Package] -> IO ExitCode
 buildPkgs pm pkgs = do
-  putStrLn ("executing: " ++ command)
-  system command
+  putStrLn ("executing: " ++ cmd)
+  system cmd
   where
-    command = buildCmd printPkg pm pkgs
+    cmd = buildCmd pm pkgs
 
-buildCmd       :: (Package -> String) -> PkgManager -> [Package] -> Command
-buildCmd pretty pm ps = unwords $ pmc ++ ps'
+buildCmd       :: PkgManager -> [Package] -> Command
+buildCmd pm ps = unwords $ pmc ++ ps'
   where
     pmc = cmd pm : opts pm
-    ps' = map pretty ps
+    ps' = map printPkg ps
