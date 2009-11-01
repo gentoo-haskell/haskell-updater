@@ -9,71 +9,103 @@
  -}
 module Distribution.Gentoo.PkgManager
        ( PkgManager
-       , name
-       , packageManagers
+       , definedPMs
+       , choosePM
        , defaultPM
+       , defaultPMName
        , dummy
-       , setPretend
-       , setDeep
-       , buildPkgs
+       , PMFlag(..)
+       , buildCmd
        ) where
 
 import Distribution.Gentoo.Packages
 
-import System.Process(system)
-import System.Exit(ExitCode)
+import Data.Char(toLower)
+import Data.Maybe(mapMaybe, fromMaybe)
+import qualified Data.Map as M
+import Data.Map(Map)
 
-data PkgManager = PM { name :: Name
-                     , cmd  :: Command
-                     , opts :: [Option]
-		     , deepOpt :: Bool -> [Option] -> [Option]
-                     }
+-- -----------------------------------------------------------------------------
 
-type Name = String
-type Command = String
-type Option = String
+-- | Defines the available Gentoo package managers.
+data PkgManager = Portage
+                | PkgCore
+                | Paludis
+                | CustomPM String
+                  deriving (Eq, Ord, Show, Read)
 
-packageManagers :: [PkgManager]
-packageManagers = [portage, pkgcore, paludis]
-
-defaultPM :: PkgManager
-defaultPM = portage
-
-portage :: PkgManager
-portage = PM "portage" "emerge" ["--oneshot", "--keep-going"]
-				(\deep os -> ["--deep"|deep] ++ os)
-
-pkgcore :: PkgManager
-pkgcore = PM "pkgcore" "pmerge" ["--deep", "--oneshot", "--ignore-failures"]
-				(\deep os -> ["--deep"|deep] ++ os)
-
-paludis :: PkgManager
-paludis = PM "paludis" "paludis" ["--install", "--preserve-world"
-                                 , "--continue-on-failure if-independent"
-				 ] (\deep os -> ["--dl-upgrade as-needed"|not deep] ++ os)
-
+-- | A dummy package manager used for testing purposes.
 dummy :: PkgManager
-dummy = PM "test PM" "echo" [] (\deep os -> (if deep then "--deep" else "--no-deep") : os)
+dummy = CustomPM "echo"
 
--- All 3 PMs use --pretend to show what packages they would build;
--- assume that they are all like this.
-setPretend    :: PkgManager -> PkgManager
-setPretend pm = pm { opts = pOpt : opts pm }
+-- | The default package manager.
+defaultPM :: PkgManager
+defaultPM = pmNameMap M.! defaultPMName
+
+defaultPMName :: String
+defaultPMName = "portage"
+
+-- | The names of known package managers.
+definedPMs :: [String]
+definedPMs = M.keys pmNameMap
+
+pmNameMap :: Map String PkgManager
+pmNameMap = M.fromList [ ("portage", Portage)
+                       , ("pkgcore", PkgCore)
+                       , ("paludis", Paludis)
+                       ]
+
+-- | Choose the appropriate PM from the textual representation; throws
+--   an error if that PM isn't known.
+choosePM    :: String -> PkgManager
+choosePM pm = fromMaybe failure $ pm' `M.lookup` pmNameMap
     where
-      pOpt = "--pretend"
+      failure = error $ "Unknown Package Manager: " ++ pm
+      pm' = map toLower pm
 
-setDeep :: Bool -> PkgManager -> PkgManager
-setDeep isDeep pm = pm { opts = deepOpt pm isDeep (opts pm)}
+pmCommand                :: PkgManager -> String
+pmCommand Portage        = "emerge"
+pmCommand PkgCore        = "pmerge"
+pmCommand Paludis        = "paludis"
+pmCommand (CustomPM cmd) = cmd
 
-buildPkgs    :: PkgManager -> [Package] -> IO ExitCode
-buildPkgs pm pkgs = do
-  putStrLn ("executing: " ++ command)
-  system command
-  where
-    command = buildCmd pm pkgs
+defaultPMFlags            :: PkgManager -> [String]
+defaultPMFlags Portage    = ["--oneshot", "--keep-going"]
+defaultPMFlags PkgCore    = ["--deep", "--oneshot", "--ignore-failures"]
+defaultPMFlags Paludis    = [ "--install", "--preserve-world"
+                            , "--continue-on-failure if-independent"]
+defaultPMFlags CustomPM{} = []
 
-buildCmd       :: PkgManager -> [Package] -> Command
-buildCmd pm ps = unwords $ pmc ++ ps'
-  where
-    pmc = cmd pm : opts pm
-    ps' = map printPkg ps
+buildCmd          :: PkgManager -> [PMFlag] -> [Package] -> String
+buildCmd pm fs ps = unwords $ pmCommand pm : fs' ++ ps'
+    where
+      fs' = mapMaybe (flagRep pm) fs ++ defaultPMFlags pm
+      ps' = map printPkg ps
+
+-- -----------------------------------------------------------------------------
+
+-- | Different optional flags to be passed to the PM.
+data PMFlag = PretendBuild
+            | UpdateDeep
+            | UpdateAsNeeded
+              deriving (Eq, Ord, Show, Read)
+
+flagRep            :: PkgManager -> PMFlag -> Maybe String
+flagRep Portage    = portagePMFlag
+flagRep PkgCore    = pkgcorePMFlag
+flagRep Paludis    = paludisPMFlag
+flagRep CustomPM{} = const Nothing -- Can't tell how flags would work.
+
+portagePMFlag                :: PMFlag -> Maybe String
+portagePMFlag PretendBuild   = Just "--pretend"
+portagePMFlag UpdateDeep     = Just "--deep"
+portagePMFlag UpdateAsNeeded = Nothing
+
+pkgcorePMFlag :: PMFlag -> Maybe String
+pkgcorePMFlag = portagePMFlag -- The options are the same for the 3
+                              -- current flags.
+
+paludisPMFlag                :: PMFlag -> Maybe String
+paludisPMFlag PretendBuild   = Just "--pretend"
+paludisPMFlag UpdateDeep     = Just "--dl-upgrade always"
+paludisPMFlag UpdateAsNeeded = Just "--dl-upgrade as-needed"

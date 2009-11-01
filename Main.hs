@@ -24,12 +24,13 @@ import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
 import Control.Monad(liftM, liftM2, when, unless)
+import System.Process(system)
 
 -- -----------------------------------------------------------------------------
 -- The overall program.
 
 main :: IO ()
-main = do flags <- parseArgs
+main = do (a,pm,fs) <- parseArgs
           -- Do this after parseArgs in case of --help, etc.
           ver    <- ghcVersion
           pName  <- getProgName
@@ -38,12 +39,12 @@ main = do flags <- parseArgs
           putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
           putStrLn $ "with executable in " ++ pLoc
           putStrLn $ "and library directory of " ++ libDir
-          uncurry actionOf flags
+          actionOf a pm fs
 
 data Action = DepCheck | GhcUpgrade | Both
             deriving (Eq, Show)
 
-actionOf            :: Action -> PkgManager -> IO a
+actionOf            :: Action -> PkgManager -> [PMFlag] -> IO a
 actionOf DepCheck   = ghcCheck
 actionOf GhcUpgrade = ghcUpgrade
 actionOf Both       = ghcBoth
@@ -62,38 +63,45 @@ die msg = do putErrLn msg
 putErrLn :: String -> IO ()
 putErrLn = hPutStrLn stderr
 
+bool       :: a -> a -> Bool -> a
+bool f t b = if b then t else f
+
 -- -----------------------------------------------------------------------------
 -- Finding and rebuilding packages
 
-ghcUpgrade :: PkgManager -> IO a
+ghcUpgrade :: PkgManager -> [PMFlag] -> IO a
 ghcUpgrade = buildPkgsFrom rebuildPkgs
 
-ghcCheck :: PkgManager -> IO a
+ghcCheck :: PkgManager -> [PMFlag] -> IO a
 ghcCheck = buildPkgsFrom brokenPkgs
 
-ghcBoth    :: PkgManager -> IO a
-ghcBoth pm = do putStrLn "\nLooking for packages from both old GHC \
-                          \installs, and those that need to be rebuilt."
-                flip buildPkgsFrom pm $ liftM2 (++) brokenPkgs rebuildPkgs
+ghcBoth       :: PkgManager -> [PMFlag] -> IO a
+ghcBoth pm fs = do putStrLn "\nLooking for packages from both old GHC \
+                            \installs, and those that need to be rebuilt."
+                   (flip . flip buildPkgsFrom) pm fs
+                            $ liftM2 (++) brokenPkgs rebuildPkgs
 
-buildPkgsFrom       :: IO [Package] -> PkgManager ->  IO a
-buildPkgsFrom ps pm = do ps' <- ps
-                         putStrLn "" -- blank line
-                         if null ps'
-                           then success "Nothing to build!"
-                           else buildPkgs pm ps' >>= exitWith
+buildPkgsFrom          :: IO [Package] -> PkgManager ->  [PMFlag] -> IO a
+buildPkgsFrom ps pm fs = do ps' <- ps
+                            putStrLn "" -- blank line
+                            if null ps'
+                              then success "Nothing to build!"
+                              else buildPkgs pm fs ps' >>= exitWith
+
+buildPkgs       :: PkgManager -> [PMFlag] -> [Package] -> IO ExitCode
+buildPkgs pm fs = system . buildCmd pm fs
 
 -- -----------------------------------------------------------------------------
 -- Command-line arguments
 
 -- Get and parse args
-parseArgs :: IO (Action, PkgManager)
+parseArgs :: IO (Action, PkgManager, [PMFlag])
 parseArgs = do args <- getArgs
                argParser $ getOpt Permute options args
 
 -- Parse args
 argParser                :: ([Flag], [String], [String])
-                            -> IO (Action, PkgManager)
+                            -> IO (Action, PkgManager, [PMFlag])
 argParser (fls, oth, []) = do unless (null oth)
                                 $ putErrLn
                                 $ unwords $ "Unknown options:" : oth
@@ -103,7 +111,7 @@ argParser (fls, oth, []) = do unless (null oth)
                                 $ err
                                 $ unwords [ "Unknown package manager:"
                                           , fromJust pmSpec]
-                              return (action, fromJust pm)
+                              return (action, fromJust pm, pmFlags)
   where
     hasFlag f = f `elem` fls
 
@@ -114,15 +122,9 @@ argParser (fls, oth, []) = do unless (null oth)
            | otherwise        = DepCheck
 
     pmSpec = fmap unPM $ find isPM fls
-    enablePretend = if hasFlag Pretend
-                    then setPretend
-                    else id
-    enableNoDeep = setDeep (not (hasFlag NoDeep))
-    pm = fmap enableNoDeep $ fmap enablePretend $ maybe (Just defaultPM) choosePM pmSpec
-
-    choosePM str = find ((==) str' . name) packageManagers
-        where
-          str' = map toLower str
+    pmFlags = bool id (PretendBuild:) (hasFlag Pretend)
+              . return $ bool UpdateDeep UpdateAsNeeded (hasFlag NoDeep)
+    pm = fmap choosePM pmSpec
 
 argParser (_, _, errs)   = die $ unwords $ "Errors in arguments:" : errs
 
@@ -191,5 +193,5 @@ options =
       "Print this help message."
     ]
     where
-      pmList = unlines . map ((++) "  * " . name) $ packageManagers
-      defPM = "The default package manager is: " ++ name defaultPM
+      pmList = unlines . map ((++) "  * ") $ definedPMs
+      defPM = "The default package manager is: " ++ defaultPMName
