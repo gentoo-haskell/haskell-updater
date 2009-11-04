@@ -13,7 +13,7 @@ module Distribution.Gentoo.GHC
        , ghcLoc
        , ghcLibDir
        , libFronts
-       , rebuildPkgs
+       , oldGhcPkgs
        , brokenPkgs
        ) where
 
@@ -106,18 +106,18 @@ tryMaybe f a = maybe (Left a) Right $ f a
 -- -----------------------------------------------------------------------------
 
 -- Finding packages installed with other versions of GHC
-rebuildPkgs :: IO [Package]
-rebuildPkgs = do putStrLn "\nSearching for packages installed with a \
-                          \different version of GHC."
-                 thisGhc <- ghcLibDir
-                 let thisGhc' = BS.pack thisGhc
-                 -- It would be nice to do this, but we can't assume
-                 -- some crazy user hasn't deleted one of these dirs
-                 -- libFronts' <- filterM doesDirectoryExist libFronts
-                 pkgs <- liftM notGHC
-                         $ concatMapM (checkLibDir thisGhc') libFronts
-                 pkgListPrint "old" pkgs
-                 return pkgs
+oldGhcPkgs :: IO [Package]
+oldGhcPkgs = do putStrLn "\nSearching for packages installed with a \
+                         \different version of GHC."
+                thisGhc <- ghcLibDir
+                let thisGhc' = BS.pack thisGhc
+                -- It would be nice to do this, but we can't assume
+                -- some crazy user hasn't deleted one of these dirs
+                -- libFronts' <- filterM doesDirectoryExist libFronts
+                pkgs <- liftM notGHC
+                        $ concatMapM (checkLibDir thisGhc') libFronts
+                pkgListPrint "old" pkgs
+                return pkgs
 
 -- Find packages installed by other versions of GHC in this possible
 -- library directory.
