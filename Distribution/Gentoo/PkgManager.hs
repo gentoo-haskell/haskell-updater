@@ -21,7 +21,7 @@ module Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.Packages
 
 import Data.Char(toLower)
-import Data.Maybe(mapMaybe, fromMaybe)
+import Data.Maybe(mapMaybe)
 import qualified Data.Map as M
 import Data.Map(Map)
 
@@ -57,10 +57,9 @@ pmNameMap = M.fromList [ ("portage", Portage)
 
 -- | Choose the appropriate PM from the textual representation; throws
 --   an error if that PM isn't known.
-choosePM    :: String -> PkgManager
-choosePM pm = fromMaybe failure $ pm' `M.lookup` pmNameMap
+choosePM    :: String -> Either String PkgManager
+choosePM pm = maybe (Left pm) Right $ pm' `M.lookup` pmNameMap
     where
-      failure = error $ "Unknown Package Manager: " ++ pm
       pm' = map toLower pm
 
 pmCommand                :: PkgManager -> String
