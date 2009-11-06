@@ -31,8 +31,7 @@ import Distribution.Simple.Compiler(PackageDB(GlobalPackageDB))
 import Distribution.Simple.Utils(rawSystemStdout)
 import Distribution.Verbosity(silent)
 import Distribution.Package(PackageIdentifier, packageId)
-import Distribution.InstalledPackageInfo( InstalledPackageInfo
-                                        , InstalledPackageInfo_
+import Distribution.InstalledPackageInfo( InstalledPackageInfo_
                                         , installedPackageId)
 import Distribution.Text(display)
 
