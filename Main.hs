@@ -14,120 +14,186 @@ import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 
-import Data.Char(toLower)
-import Data.List(find)
-import Data.Maybe(fromJust, isNothing)
+import Data.Either(partitionEithers)
+import Data.List(foldl1')
 import Data.Version(showVersion)
+import qualified Data.Set as Set
+import Data.Set(Set)
 import qualified Paths_haskell_updater as Paths(version)
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
-import Control.Monad(liftM, liftM2, when, unless)
+import Control.Monad(liftM, liftM2, unless)
 import System.Process(system)
 
 -- -----------------------------------------------------------------------------
 -- The overall program.
 
 main :: IO ()
-main = do (a,pm,fs) <- parseArgs
-          -- Do this after parseArgs in case of --help, etc.
-          ver    <- ghcVersion
-          pName  <- getProgName
-          pLoc   <- ghcLoc
-          libDir <- ghcLibDir
-          putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
-          putStrLn $ "with executable in " ++ pLoc
-          putStrLn $ "and library directory of " ++ libDir
-          actionOf a pm fs
-
-data Action = DepCheck | GhcUpgrade | Both
-            deriving (Eq, Show)
-
-actionOf            :: Action -> PkgManager -> [PMFlag] -> IO a
-actionOf DepCheck   = ghcCheck
-actionOf GhcUpgrade = ghcUpgrade
-actionOf Both       = ghcBoth
+main = uncurry runAction =<< parseArgs
 
 -- -----------------------------------------------------------------------------
--- Utility functions
+-- The possible actions that haskell-updater can perform.
 
-success     :: String -> IO a
-success msg = do putStrLn msg
-                 exitWith ExitSuccess
+data Action = Help
+            | Version
+            | Build { targets :: Set BuildTarget }
+              -- If anything is added here after Build, MAKE SURE YOU
+              -- UPDATE combineActions or it won't always work!
+              deriving (Eq, Ord, Show, Read)
 
-die     :: String -> IO a
-die msg = do putErrLn msg
-             exitWith (ExitFailure 1)
+defaultAction :: Action
+defaultAction = Build $ Set.fromList [GhcUpgrade, DepCheck]
 
-putErrLn :: String -> IO ()
-putErrLn = hPutStrLn stderr
+-- Combine all the actions together.  If the list is empty, use the
+-- defaultAction.
+combineAllActions :: [Action] -> Action
+combineAllActions = emptyElse defaultAction (foldl1' combineActions)
 
-bool       :: a -> a -> Bool -> a
-bool f t b = if b then t else f
+-- Combine two actions together.  If they're both Build blah, merge
+-- them; otherwise, pick the lower of the two (i.e. more important).
+-- Note that it's safe (at the moment at least) to assume that when
+-- the lower of one is a Build that they're both build.
+combineActions       :: Action -> Action -> Action
+combineActions a1 a2 = case (a1 `min` a2) of
+                         Build{} -> Build $ targets a1 `Set.union` targets a2
+                         a       -> a
 
--- -----------------------------------------------------------------------------
--- Finding and rebuilding packages
-
-ghcUpgrade :: PkgManager -> [PMFlag] -> IO a
-ghcUpgrade = buildPkgsFrom rebuildPkgs
-
-ghcCheck :: PkgManager -> [PMFlag] -> IO a
-ghcCheck = buildPkgsFrom brokenPkgs
-
-ghcBoth       :: PkgManager -> [PMFlag] -> IO a
-ghcBoth pm fs = do putStrLn "\nLooking for packages from both old GHC \
-                            \installs, and those that need to be rebuilt."
-                   (flip . flip buildPkgsFrom) pm fs
-                            $ liftM2 (++) brokenPkgs rebuildPkgs
-
-buildPkgsFrom          :: IO [Package] -> PkgManager ->  [PMFlag] -> IO a
-buildPkgsFrom ps pm fs = do ps' <- ps
-                            putStrLn "" -- blank line
-                            if null ps'
-                              then success "Nothing to build!"
-                              else buildPkgs pm fs ps' >>= exitWith
-
-buildPkgs       :: PkgManager -> [PMFlag] -> [Package] -> IO ExitCode
-buildPkgs pm fs = system . buildCmd pm fs
+runAction               :: RunModifier -> Action -> IO a
+runAction _  Help       = help
+runAction _  Version    = version
+runAction rm (Build ts) = do systemInfo
+                             ps <- allGetPackages ts
+                             buildPkgs rm ps
 
 -- -----------------------------------------------------------------------------
--- Command-line arguments
+-- The possible things to build.
 
--- Get and parse args
-parseArgs :: IO (Action, PkgManager, [PMFlag])
+data BuildTarget = GhcUpgrade
+                 | DepCheck
+                   deriving (Eq, Ord, Show, Read)
+
+getPackages            :: BuildTarget -> IO [Package]
+getPackages GhcUpgrade = oldGhcPkgs
+getPackages DepCheck   = brokenPkgs
+
+getPackages' :: BuildTarget -> IO (Set Package)
+getPackages' = liftM Set.fromList . getPackages
+
+allGetPackages :: Set BuildTarget -> IO [Package]
+allGetPackages = liftM (Set.toList . Set.unions)
+                   . mapM getPackages'
+                   . Set.toList
+
+-- -----------------------------------------------------------------------------
+-- How to build packages.
+
+data RunModifier = RM { pkgmgr   :: PkgManager
+                      , flags    :: [PMFlag]
+                      , withCmd  :: WithCmd
+                      }
+                   deriving (Eq, Ord, Show, Read)
+
+-- At the moment, PrintAndRun is the only option available.
+data WithCmd = RunOnly
+             | PrintOnly
+             | PrintAndRun
+               deriving (Eq, Ord, Show, Read)
+
+runCmd           :: WithCmd -> String -> IO a
+runCmd RunOnly   = runCommand
+runCmd PrintOnly = success
+runCmd PrintAndRun = liftM2 (>>) putStrLn runCommand
+
+runCommand     :: String -> IO a
+runCommand cmd = system cmd >>= exitWith
+
+buildPkgs       :: RunModifier -> [Package] -> IO a
+buildPkgs _  [] = success "\nNothing to build!"
+buildPkgs rm ps = runCmd (withCmd rm) cmd
+    where
+      cmd = buildCmd (pkgmgr rm) (flags rm) ps
+
+-- -----------------------------------------------------------------------------
+-- Command-line flags
+
+data Flag = HelpFlag
+          | VersionFlag
+          | PM String
+          | Check
+          | Upgrade
+          | Pretend
+	  | NoDeep
+          deriving (Eq, Ord, Show, Read)
+
+parseArgs :: IO (RunModifier, Action)
 parseArgs = do args <- getArgs
                argParser $ getOpt Permute options args
 
--- Parse args
 argParser                :: ([Flag], [String], [String])
-                            -> IO (Action, PkgManager, [PMFlag])
+                            -> IO (RunModifier, Action)
 argParser (fls, oth, []) = do unless (null oth)
                                 $ putErrLn
                                 $ unwords $ "Unknown options:" : oth
-                              when (hasFlag Help) help
-                              when (hasFlag Version) version
-                              when (isNothing pm)
-                                $ err
-                                $ unwords [ "Unknown package manager:"
-                                          , fromJust pmSpec]
-                              return (action, fromJust pm, pmFlags)
-  where
-    hasFlag f = f `elem` fls
-
-    upgrade = hasFlag Upgrade
-    check = hasFlag Check
-    action | upgrade == check = Both
-           | upgrade          = GhcUpgrade
-           | otherwise        = DepCheck
-
-    pmSpec = fmap unPM $ find isPM fls
-    pmFlags = bool id (PretendBuild:) (hasFlag Pretend)
-              . return $ bool UpdateDeep UpdateAsNeeded (hasFlag NoDeep)
-    pm = fmap choosePM pmSpec
+                              unless (null bPms)
+                                $ putErrLn
+                                $ unwords $ "Unknown package managers:" : bPms
+                              return (rm, a)
+    where
+      (fls', as) = partitionBy flagToAction fls
+      a = combineAllActions as
+      (opts, pms) = partitionBy flagToPM fls'
+      (bPms, pms') = partitionBy choosePM pms
+      pm = emptyElse defaultPM last pms'
+      opts' = Set.fromList opts
+      hasFlag = flip Set.member opts'
+      pmFlags = bool id (PretendBuild:) (hasFlag Pretend)
+                . return $ bool UpdateDeep UpdateAsNeeded (hasFlag NoDeep)
+      rm = RM { pkgmgr   = pm
+              , flags    = pmFlags
+                -- We need to get Flags that represent this as well.
+              , withCmd  = PrintAndRun
+              }
 
 argParser (_, _, errs)   = die $ unwords $ "Errors in arguments:" : errs
 
+flagToAction             :: Flag -> Either Flag Action
+flagToAction HelpFlag    = Right Help
+flagToAction VersionFlag = Right Version
+flagToAction Check       = Right . Build $ Set.singleton DepCheck
+flagToAction Upgrade     = Right . Build $ Set.singleton GhcUpgrade
+flagToAction f           = Left f
+
+flagToPM         :: Flag -> Either Flag String
+flagToPM (PM pm) = Right pm
+flagToPM f       = Left f
+
+options :: [OptDescr Flag]
+options =
+    [ Option ['c']      ["dep-check"]       (NoArg Check)
+      "Check dependencies of Haskell packages."
+    , Option ['u']      ["upgrade"]         (NoArg Upgrade)
+      "Rebuild Haskell packages after a GHC upgrade."
+    , Option ['P']      ["package-manager"] (ReqArg PM "PM")
+      $ "Use package manager PM, where PM can be one of:\n"
+            ++ pmList ++ defPM
+    , Option ['p']      ["pretend"]         (NoArg Pretend)
+      "Only pretend to build packages."
+    , Option []         ["no-deep"]         (NoArg NoDeep)
+      "Don't pull deep dependencies (--deep with emerge)."
+    , Option ['v']      ["version"]         (NoArg VersionFlag)
+      "Version information."
+    , Option ['h', '?'] ["help"]            (NoArg HelpFlag)
+      "Print this help message."
+    ]
+    where
+      pmList = unlines . map ((++) "  * ") $ definedPMs
+      defPM = "The last valid value of PM specified is chosen.\n\
+              \The default package manager is: " ++ defaultPMName
+
+-- -----------------------------------------------------------------------------
+-- Printing information.
 
 help :: IO a
 help = progInfo >>= success
@@ -154,44 +220,36 @@ progInfo = do pName <- getProgName
                   \\n\
                   \Options:"
 
+systemInfo :: IO ()
+systemInfo = do ver    <- ghcVersion
+                pName  <- getProgName
+                pLoc   <- ghcLoc
+                libDir <- ghcLibDir
+                putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
+                putStrLn $ "  * Executable: " ++ pLoc
+                putStrLn $ "  * Library directory: " ++ libDir
+
 -- -----------------------------------------------------------------------------
--- Command-line flags
+-- Utility functions
 
-data Flag = Help
-          | Version
-          | PM String
-          | Check
-          | Upgrade
-          | Pretend
-	  | NoDeep
-          deriving (Eq, Show)
+success     :: String -> IO a
+success msg = do putStrLn msg
+                 exitWith ExitSuccess
 
-isPM        :: Flag -> Bool
-isPM (PM _) = True
-isPM _      = False
+die     :: String -> IO a
+die msg = do putErrLn msg
+             exitWith (ExitFailure 1)
 
-unPM         :: Flag -> String
-unPM (PM pm) = pm
-unPM _       = error "unPM only valid if isPM is true."
+putErrLn :: String -> IO ()
+putErrLn = hPutStrLn stderr
 
-options :: [OptDescr Flag]
-options =
-    [ Option ['c']      ["dep-check"]       (NoArg Check)
-      "Check dependencies of Haskell packages."
-    , Option ['u']      ["upgrade"]         (NoArg Upgrade)
-      "Rebuild Haskell packages after a GHC upgrade."
-    , Option ['P']      ["package-manager"] (ReqArg PM "PM")
-      $ "Use package manager PM, where PM can be one of:\n"
-            ++ pmList ++ defPM
-    , Option ['p']      ["pretend"]         (NoArg Pretend)
-      "Only pretend to build packages."
-    , Option []         ["no-deep"]         (NoArg NoDeep)
-      "Don't pull deep dependencies (--deep with emerge)."
-    , Option ['v']      ["version"]         (NoArg Version)
-      "Version information."
-    , Option ['h', '?'] ["help"]            (NoArg Help)
-      "Print this help message."
-    ]
-    where
-      pmList = unlines . map ((++) "  * ") $ definedPMs
-      defPM = "The default package manager is: " ++ defaultPMName
+bool       :: a -> a -> Bool -> a
+bool f t b = if b then t else f
+
+partitionBy   :: (a -> Either l r) -> [a] -> ([l], [r])
+partitionBy f = partitionEithers . map f
+
+-- If the list is empty, return the provided value; otherwise use the function.
+emptyElse        :: b -> ([a] -> b) -> [a] -> b
+emptyElse e _ [] = e
+emptyElse _ f as = f as
