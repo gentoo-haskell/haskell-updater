@@ -37,7 +37,7 @@ Executable haskell-updater {
 
     Build-Depends:      base >= 3 && < 5,
                         Cabal >= 1.8 && < 1.9,
-                        containers < 0.3,
+                        containers < 0.4,
                         filepath   < 1.2,
                         directory  < 1.1,
                         bytestring < 1.0,
