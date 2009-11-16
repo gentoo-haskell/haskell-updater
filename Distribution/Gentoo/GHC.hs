@@ -42,7 +42,7 @@ import Data.Maybe(Maybe(..), maybe, fromJust)
 import qualified Data.Map as Map
 import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
-import System.FilePath((</>), takeExtension)
+import System.FilePath((</>), takeExtension, pathSeparator)
 import System.Directory( canonicalizePath
                        , doesDirectoryExist
                        , findExecutable)
@@ -120,29 +120,40 @@ oldGhcPkgs = do putStrLn "\nSearching for packages installed with a \
 
 -- Find packages installed by other versions of GHC in this possible
 -- library directory.
-checkLibDir                :: BSFilePath -> FilePath -> IO [Package]
+checkLibDir                :: BSFilePath -> BSFilePath -> IO [Package]
 checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
   where
     wanted dir = isValid dir && (not . isInvalid) dir
 
-    isValid = BS.isPrefixOf (BS.pack $ libDir </> allowedDir)
-    allowedDir = "ghc"
+    isValid = isGhcLibDir libDir
 
-    isInvalid dir = any (flip BS.isPrefixOf dir)
-                    $ thisGhc : map (BS.pack . (</>) libDir) disAllowedDirs
-    -- Use a list here in case we have to add more later
-    disAllowedDirs = map ("ghc-" ++)
-                     [ "events"
-                     , "mtl"
-                     , "paths"
-                     , "syb"
-                     ]
+    -- Invalid if it's this GHC
+    isInvalid = BS.isPrefixOf thisGhc
+
+-- A valid GHC library directory starting at libdir has a name of
+-- either "ghc" or "ghc-bin", then a hyphen and then a version number.
+isGhcLibDir            :: BSFilePath -> BSFilePath -> Bool
+isGhcLibDir libdir dir = go ghcDirName || go ghcBinDirName
+  where
+    -- This is hacky because FilePath doesn't work on Bytestrings...
+    libdir' = BS.snoc libdir pathSeparator
+    ghcDirName = BS.pack "ghc"
+    ghcBinDirName = BS.pack "ghc-bin"
+
+    go dn = BS.isPrefixOf ghcDir dir
+            -- Any possible version starts with a digit
+            && isDigit (BS.index dir ghcDirLen)
+      where
+        ghcDir = flip BS.snoc '-' $ BS.append libdir' dn
+        ghcDirLen = BS.length ghcDir
+
 
 -- The possible places GHC could have installed lib directories
-libFronts :: [FilePath]
-libFronts = do loc <- ["usr", "opt" </> "ghc"]
-               lib <- ["lib", "lib64"]
-               return $ "/" </> loc </> lib
+libFronts :: [BSFilePath]
+libFronts = map BS.pack
+            $ do loc <- ["usr", "opt" </> "ghc"]
+                 lib <- ["lib", "lib64"]
+                 return $ "/" </> loc </> lib
 
 -- -----------------------------------------------------------------------------
 
