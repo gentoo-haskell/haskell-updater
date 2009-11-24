@@ -90,10 +90,11 @@ confFiles dir = do let gDir = dir </> "gentoo"
 pkgListPrint :: String -> [Package] -> IO ()
 pkgListPrint desc pkgs
     = if null pkgs
-      then putStrLn $ unwords ["No", desc, "packages found!"]
+      then putStrLn $ unwords ["No", desc, "packages found!\n"]
       else do putStrLn $ unwords ["Found the following"
                                  , desc, "packages:"]
               printList printPkg pkgs
+              putStrLn ""
 
 -- Print a bullet list of values with one value per line.
 printList   :: (a -> String) -> [a] -> IO ()
@@ -106,7 +107,7 @@ tryMaybe f a = maybe (Left a) Right $ f a
 
 -- Finding packages installed with other versions of GHC
 oldGhcPkgs :: IO [Package]
-oldGhcPkgs = do putStrLn "\nSearching for packages installed with a \
+oldGhcPkgs = do putStrLn "Searching for packages installed with a \
                          \different version of GHC."
                 thisGhc <- ghcLibDir
                 let thisGhc' = BS.pack thisGhc
@@ -159,7 +160,7 @@ libFronts = map BS.pack
 
 -- Finding broken packages in this install of GHC.
 brokenPkgs :: IO [Package]
-brokenPkgs = do putStrLn "\nSearching Haskell libraries with broken dependencies."
+brokenPkgs = do putStrLn "Searching for Haskell libraries with broken dependencies."
                 (pns, cnfs) <- brokenConfs
                 unless (null pns)
                            $ unknownPackages pns

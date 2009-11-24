@@ -228,6 +228,7 @@ systemInfo = do ver    <- ghcVersion
                 putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
                 putStrLn $ "  * Executable: " ++ pLoc
                 putStrLn $ "  * Library directory: " ++ libDir
+                putStrLn ""
 
 -- -----------------------------------------------------------------------------
 -- Utility functions
