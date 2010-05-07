@@ -63,7 +63,7 @@ combineActions a1 a2 = case (a1 `min` a2) of
 runAction               :: RunModifier -> Action -> IO a
 runAction _  Help       = help
 runAction _  Version    = version
-runAction rm (Build ts) = do systemInfo
+runAction rm (Build ts) = do systemInfo rm
                              ps <- allGetPackages ts
                              buildPkgs rm ps
 
@@ -223,15 +223,16 @@ progInfo = do pName <- getProgName
                   \\n\
                   \Options:"
 
-systemInfo :: IO ()
-systemInfo = do ver    <- ghcVersion
-                pName  <- getProgName
-                pLoc   <- ghcLoc
-                libDir <- ghcLibDir
-                putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
-                putStrLn $ "  * Executable: " ++ pLoc
-                putStrLn $ "  * Library directory: " ++ libDir
-                putStrLn ""
+systemInfo    :: RunModifier -> IO ()
+systemInfo rm = do ver    <- ghcVersion
+                   pName  <- getProgName
+                   pLoc   <- ghcLoc
+                   libDir <- ghcLibDir
+                   putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
+                   putStrLn $ "  * Executable: " ++ pLoc
+                   putStrLn $ "  * Library directory: " ++ libDir
+                   putStrLn $ "  * Package manager: " ++ nameOfPM (pkgmgr rm)
+                   putStrLn ""
 
 -- -----------------------------------------------------------------------------
 -- Utility functions

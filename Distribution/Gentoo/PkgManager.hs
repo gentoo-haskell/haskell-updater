@@ -13,6 +13,7 @@ module Distribution.Gentoo.PkgManager
        , choosePM
        , defaultPM
        , defaultPMName
+       , nameOfPM
        , dummy
        , PMFlag(..)
        , buildCmd
@@ -64,6 +65,12 @@ pmNameMap = M.fromList [ ("portage", Portage)
                        , ("pkgcore", PkgCore)
                        , ("paludis", Paludis)
                        ]
+
+pmNameMap' :: Map PkgManager String
+pmNameMap' = M.fromList . map (\(nm,pm) -> (pm,nm)) $ M.toList pmNameMap
+
+nameOfPM :: PkgManager -> String
+nameOfPM = (pmNameMap' M.!)
 
 -- | Choose the appropriate PM from the textual representation; throws
 --   an error if that PM isn't known.
