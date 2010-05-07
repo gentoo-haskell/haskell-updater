@@ -20,9 +20,13 @@ Author:              Ivan Lazar Miljenovic,
                      Lennart Kolmodin,
                      Stephan Friedrichs
 Maintainer:          Ivan.Miljenovic@gmail.com
-Cabal-Version:       >= 1.2
+Cabal-Version:       >= 1.6
 Build-Type:          Simple
 Extra-Source-Files:  TODO
+
+Source-Repository head
+    Type:         darcs
+    Location:     http://code.haskell.org/gentoo/haskell-updater/
 
 Executable haskell-updater {
 
@@ -35,8 +39,8 @@ Executable haskell-updater {
     Ghc-Options:        -Wall
     Ghc-Prof-Options:   -auto-all
 
-    Build-Depends:      base >= 3 && < 5,
-                        Cabal >= 1.8 && < 1.9,
+    Build-Depends:      base == 4.*,
+                        Cabal == 1.8.*,
                         containers < 0.4,
                         filepath   < 1.2,
                         directory  < 1.1,
