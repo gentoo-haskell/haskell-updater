@@ -37,8 +37,8 @@ import Distribution.Text(display)
 
 -- Other imports
 import Data.Char(isDigit)
-import Data.Either(Either(..), partitionEithers)
-import Data.Maybe(Maybe(..), maybe, fromJust)
+import Data.Either(partitionEithers)
+import Data.Maybe(fromJust)
 import qualified Data.Map as Map
 import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
