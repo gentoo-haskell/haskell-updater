@@ -129,23 +129,24 @@ data Flag = HelpFlag
 
 parseArgs :: IO (RunModifier, Action)
 parseArgs = do args <- getArgs
-               argParser $ getOpt Permute options args
+               defPM <- defaultPM
+               argParser defPM $ getOpt Permute options args
 
-argParser                :: ([Flag], [String], [String])
-                            -> IO (RunModifier, Action)
-argParser (fls, oth, []) = do unless (null oth)
-                                $ putErrLn
-                                $ unwords $ "Unknown options:" : oth
-                              unless (null bPms)
-                                $ putErrLn
-                                $ unwords $ "Unknown package managers:" : bPms
-                              return (rm, a)
+argParser                    :: PkgManager -> ([Flag], [String], [String])
+                                -> IO (RunModifier, Action)
+argParser dPM (fls, oth, []) = do unless (null oth)
+                                    $ putErrLn
+                                    $ unwords $ "Unknown options:" : oth
+                                  unless (null bPms)
+                                    $ putErrLn
+                                    $ unwords $ "Unknown package managers:" : bPms
+                                  return (rm, a)
     where
       (fls', as) = partitionBy flagToAction fls
       a = combineAllActions as
       (opts, pms) = partitionBy flagToPM fls'
       (bPms, pms') = partitionBy choosePM pms
-      pm = emptyElse defaultPM last pms'
+      pm = emptyElse dPM last pms'
       opts' = Set.fromList opts
       hasFlag = flip Set.member opts'
       pmFlags = bool id (PretendBuild:) (hasFlag Pretend)
@@ -156,7 +157,7 @@ argParser (fls, oth, []) = do unless (null oth)
               , withCmd  = PrintAndRun
               }
 
-argParser (_, _, errs)   = die $ unwords $ "Errors in arguments:" : errs
+argParser _ (_, _, errs)     = die $ unwords $ "Errors in arguments:" : errs
 
 flagToAction             :: Flag -> Either Flag Action
 flagToAction HelpFlag    = Right Help
@@ -190,7 +191,9 @@ options =
     where
       pmList = unlines . map ((++) "  * ") $ definedPMs
       defPM = "The last valid value of PM specified is chosen.\n\
-              \The default package manager is: " ++ defaultPMName
+              \The default package manager is: " ++ defaultPMName ++ ",\n\
+              \which can be overriden with the \"PACKAGE_MANAGER\"\n\
+              \environment variable."
 
 -- -----------------------------------------------------------------------------
 -- Printing information.

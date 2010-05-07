@@ -21,9 +21,11 @@ module Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.Packages
 
 import Data.Char(toLower)
-import Data.Maybe(mapMaybe)
+import Data.Maybe(mapMaybe, fromMaybe)
 import qualified Data.Map as M
 import Data.Map(Map)
+import System.IO.Error(try)
+import System.Environment(getEnv)
 
 -- -----------------------------------------------------------------------------
 
@@ -38,9 +40,17 @@ data PkgManager = Portage
 dummy :: PkgManager
 dummy = CustomPM "echo"
 
--- | The default package manager.
-defaultPM :: PkgManager
-defaultPM = pmNameMap M.! defaultPMName
+-- | The default package manager.  If the environment variable
+--   @PACKAGE_MANAGER@ exists, use that; otherwise default to
+--   "portage".  Note that even if that environment variable is
+--   defined, if it is unknown then it won't be used.
+defaultPM :: IO PkgManager
+defaultPM = do eDPM <- try $ getEnv "PACKAGE_MANAGER"
+               let dPM = either (const defaultPMName) id eDPM
+                   mPM = dPM `M.lookup` pmNameMap
+               return $ fromMaybe knownDef mPM
+  where
+    knownDef = pmNameMap M.! defaultPMName
 
 defaultPMName :: String
 defaultPMName = "portage"
