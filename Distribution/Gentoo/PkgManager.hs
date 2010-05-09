@@ -124,4 +124,4 @@ pkgcorePMFlag = portagePMFlag -- The options are the same for the 3
 paludisPMFlag                :: PMFlag -> Maybe String
 paludisPMFlag PretendBuild   = Just "--pretend"
 paludisPMFlag UpdateDeep     = Just "--dl-upgrade always"
-paludisPMFlag UpdateAsNeeded = Just "--dl-upgrade as-needed"
+paludisPMFlag UpdateAsNeeded = Just "--dl-upgrade as-needed --dl-new-slots as-needed"
