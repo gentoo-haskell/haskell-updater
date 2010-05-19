@@ -1,7 +1,7 @@
 {- |
    Module      : Main
    Description : The haskell-updater executable
-   Copyright   : (c) Ivan Lazar Miljenovic, Stephan Friedrichs 2009
+   Copyright   : (c) Ivan Lazar Miljenovic, Stephan Friedrichs, Emil Karlson 2010
    License     : GPL-2 or later
    Maintainer  : Ivan.Miljenovic@gmail.com
 
@@ -121,6 +121,7 @@ buildPkgs rm ps = runCmd (withCmd rm) cmd
 data Flag = HelpFlag
           | VersionFlag
           | PM String
+          | CustomPMFlag String
           | Check
           | Upgrade
           | Pretend
@@ -145,7 +146,7 @@ argParser dPM (fls, oth, []) = do unless (null oth)
       (fls', as) = partitionBy flagToAction fls
       a = combineAllActions as
       (opts, pms) = partitionBy flagToPM fls'
-      (bPms, pms') = partitionBy choosePM pms
+      (bPms, pms') = partitionBy isValidPM pms
       pm = emptyElse dPM last pms'
       opts' = Set.fromList opts
       hasFlag = flip Set.member opts'
@@ -166,9 +167,10 @@ flagToAction Check       = Right . Build $ Set.singleton DepCheck
 flagToAction Upgrade     = Right . Build $ Set.singleton GhcUpgrade
 flagToAction f           = Left f
 
-flagToPM         :: Flag -> Either Flag String
-flagToPM (PM pm) = Right pm
-flagToPM f       = Left f
+flagToPM                   :: Flag -> Either Flag PkgManager
+flagToPM (CustomPMFlag pm) = Right $ stringToCustomPM pm
+flagToPM (PM pm)           = Right $ choosePM pm
+flagToPM f                 = Left f
 
 options :: [OptDescr Flag]
 options =
@@ -179,6 +181,8 @@ options =
     , Option ['P']      ["package-manager"] (ReqArg PM "PM")
       $ "Use package manager PM, where PM can be one of:\n"
             ++ pmList ++ defPM
+    , Option ['C']      ["--custom-pm"]     (ReqArg CustomPMFlag "command")
+      "Use custom command as package manager."
     , Option ['p']      ["pretend"]         (NoArg Pretend)
       "Only pretend to build packages."
     , Option []         ["no-deep"]         (NoArg NoDeep)

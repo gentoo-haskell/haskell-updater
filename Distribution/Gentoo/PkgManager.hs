@@ -1,7 +1,7 @@
 {- |
    Module      : Distribution.Gentoo.PkgManager
    Description : Using package managers in Gentoo.
-   Copyright   : (c) Ivan Lazar Miljenovic 2009
+   Copyright   : (c) Ivan Lazar Miljenovic, Emil Karlson 2010
    License     : GPL-2 or later
    Maintainer  : Ivan.Miljenovic@gmail.com
 
@@ -11,6 +11,8 @@ module Distribution.Gentoo.PkgManager
        ( PkgManager
        , definedPMs
        , choosePM
+       , stringToCustomPM
+       , isValidPM
        , defaultPM
        , defaultPMName
        , nameOfPM
@@ -34,6 +36,7 @@ import System.Environment(getEnv)
 data PkgManager = Portage
                 | PkgCore
                 | Paludis
+                | InvalidPM String
                 | CustomPM String
                   deriving (Eq, Ord, Show, Read)
 
@@ -60,6 +63,10 @@ defaultPMName = "portage"
 definedPMs :: [String]
 definedPMs = M.keys pmNameMap
 
+isValidPM                    :: PkgManager -> Either String PkgManager
+isValidPM (InvalidPM pmname) = Left pmname
+isValidPM pm                 = Right pm
+
 pmNameMap :: Map String PkgManager
 pmNameMap = M.fromList [ ("portage", Portage)
                        , ("pkgcore", PkgCore)
@@ -69,28 +76,35 @@ pmNameMap = M.fromList [ ("portage", Portage)
 pmNameMap' :: Map PkgManager String
 pmNameMap' = M.fromList . map (\(nm,pm) -> (pm,nm)) $ M.toList pmNameMap
 
-nameOfPM :: PkgManager -> String
-nameOfPM = (pmNameMap' M.!)
+nameOfPM                    :: PkgManager -> String
+nameOfPM (CustomPM pmname)  = "custom package manager command: " ++ pmname
+nameOfPM (InvalidPM pmname) = "invalid package manager: " ++ pmname
+nameOfPM pm                 = pmNameMap' M.! pm
 
 -- | Choose the appropriate PM from the textual representation; throws
 --   an error if that PM isn't known.
-choosePM    :: String -> Either String PkgManager
-choosePM pm = maybe (Left pm) Right $ pm' `M.lookup` pmNameMap
+choosePM    :: String -> PkgManager
+choosePM pm = maybe (InvalidPM pm) id $ pm' `M.lookup` pmNameMap
     where
       pm' = map toLower pm
+
+stringToCustomPM :: String -> PkgManager
+stringToCustomPM = CustomPM
 
 pmCommand                :: PkgManager -> String
 pmCommand Portage        = "emerge"
 pmCommand PkgCore        = "pmerge"
 pmCommand Paludis        = "paludis"
 pmCommand (CustomPM cmd) = cmd
+pmCommand (InvalidPM _)  = undefined
 
-defaultPMFlags            :: PkgManager -> [String]
-defaultPMFlags Portage    = ["--oneshot", "--keep-going"]
-defaultPMFlags PkgCore    = ["--deep", "--oneshot", "--ignore-failures"]
-defaultPMFlags Paludis    = [ "--install", "--preserve-world"
-                            , "--continue-on-failure if-independent"]
-defaultPMFlags CustomPM{} = []
+defaultPMFlags                 :: PkgManager -> [String]
+defaultPMFlags Portage         = ["--oneshot", "--keep-going"]
+defaultPMFlags PkgCore         = ["--deep", "--oneshot", "--ignore-failures"]
+defaultPMFlags Paludis         = [ "--install", "--preserve-world"
+                                 , "--continue-on-failure if-independent"]
+defaultPMFlags CustomPM{}      = []
+defaultPMFlags (InvalidPM _)   = undefined
 
 buildCmd          :: PkgManager -> [PMFlag] -> [Package] -> String
 buildCmd pm fs ps = unwords $ pmCommand pm : fs' ++ ps'
@@ -106,11 +120,12 @@ data PMFlag = PretendBuild
             | UpdateAsNeeded
               deriving (Eq, Ord, Show, Read)
 
-flagRep            :: PkgManager -> PMFlag -> Maybe String
-flagRep Portage    = portagePMFlag
-flagRep PkgCore    = pkgcorePMFlag
-flagRep Paludis    = paludisPMFlag
-flagRep CustomPM{} = const Nothing -- Can't tell how flags would work.
+flagRep               :: PkgManager -> PMFlag -> Maybe String
+flagRep Portage       = portagePMFlag
+flagRep PkgCore       = pkgcorePMFlag
+flagRep Paludis       = paludisPMFlag
+flagRep CustomPM{}    = const Nothing -- Can't tell how flags would work.
+flagRep (InvalidPM _) = undefined
 
 portagePMFlag                :: PMFlag -> Maybe String
 portagePMFlag PretendBuild   = Just "--pretend"
