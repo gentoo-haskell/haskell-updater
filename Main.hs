@@ -182,7 +182,8 @@ options =
       $ "Use package manager PM, where PM can be one of:\n"
             ++ pmList ++ defPM
     , Option ['C']      ["--custom-pm"]     (ReqArg CustomPMFlag "command")
-      "Use custom command as package manager."
+      "Use custom command as package manager;\n\
+      \ignores the --pretend and --no-deep flags."
     , Option ['p']      ["pretend"]         (NoArg Pretend)
       "Only pretend to build packages."
     , Option []         ["no-deep"]         (NoArg NoDeep)
