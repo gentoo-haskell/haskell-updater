@@ -15,11 +15,11 @@ License:             GPL
 License-file:        COPYRIGHT
 Copyright:           (c) Ivan Lazar Miljenovic,
                          Lennart Kolmodin,
-                         Stephan Friedrichs
+                         Stephan Friedrichs,
                          Emil Karlson
 Author:              Ivan Lazar Miljenovic,
                      Lennart Kolmodin,
-                     Stephan Friedrichs
+                     Stephan Friedrichs,
                      Emil Karlson
 Maintainer:          Ivan.Miljenovic@gmail.com
 Cabal-Version:       >= 1.6
