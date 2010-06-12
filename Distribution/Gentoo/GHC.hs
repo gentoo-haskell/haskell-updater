@@ -129,7 +129,7 @@ checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
     isValid = isGhcLibDir libDir
 
     -- Invalid if it's this GHC
-    isInvalid = BS.isPrefixOf thisGhc
+    isInvalid fp = fp == thisGhc || BS.isPrefixOf (thisGhc `BS.snoc` pathSeparator) fp
 
 -- A valid GHC library directory starting at libdir has a name of
 -- either "ghc" or "ghc-bin", then a hyphen and then a version number.
