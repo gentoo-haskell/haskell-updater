@@ -21,24 +21,16 @@ import Distribution.Gentoo.Util
 import Distribution.Gentoo.Packages
 
 -- Cabal imports
-import Distribution.Simple.PackageIndex( PackageIndex
-                                        , brokenPackages
-                                        , reverseDependencyClosure)
-import Distribution.Simple.GHC(getInstalledPackages, configure)
-import Distribution.Simple.Program( ProgramConfiguration
-                                  , defaultProgramConfiguration)
-import Distribution.Simple.Compiler(PackageDB(GlobalPackageDB))
-import Distribution.Simple.Utils(rawSystemStdout)
+import Distribution.Simple.Utils(rawSystemStdInOut)
 import Distribution.Verbosity(silent)
 import Distribution.Package(PackageIdentifier, packageId)
-import Distribution.InstalledPackageInfo( InstalledPackageInfo_
-                                        , installedPackageId)
-import Distribution.Text(display)
+import Distribution.InstalledPackageInfo(InstalledPackageInfo_)
+import Distribution.Text(display, simpleParse)
 
 -- Other imports
 import Data.Char(isDigit)
 import Data.Either(partitionEithers)
-import Data.Maybe(fromJust)
+import Data.Maybe(fromJust, mapMaybe)
 import qualified Data.Map as Map
 import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
@@ -54,7 +46,11 @@ import Control.Monad(foldM, liftM, unless)
 
 -- Get only the first line of output
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
-rawSysStdOutLine app = liftM (head . lines) . rawSystemStdout silent app
+rawSysStdOutLine app = liftM (head . lines) . rawCommand app
+
+rawCommand          :: FilePath -> [String] -> IO String
+rawCommand cmd args = do (out,_,_) <- rawSystemStdInOut silent cmd args Nothing False
+                         return out
 
 -- Get the first line of output from calling GHC with the given
 -- arguments.
@@ -73,6 +69,14 @@ ghcVersion = liftM (dropWhile (not . isDigit)) $ ghcRawOut ["--version"]
 -- The directory where GHC has all its libraries, etc.
 ghcLibDir :: IO FilePath
 ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
+
+ghcPkgRawOut      :: [String] -> IO String
+ghcPkgRawOut args = ghcPkgLoc >>= flip rawCommand args
+
+-- Cheat with using fromJust since we know that ghc-pkg must be in $PATH
+-- somewhere, probably /usr/bin.
+ghcPkgLoc :: IO FilePath
+ghcPkgLoc = liftM fromJust $ findExecutable "ghc-pkg"
 
 -- Return the Gentoo .conf files found in this GHC libdir
 confFiles     :: FilePath -> IO [FilePath]
@@ -187,7 +191,7 @@ brokenPkgs = do putStrLn "Searching for Haskell libraries with broken dependenci
 
 -- .conf files from broken packages of this GHC version
 brokenConfs :: IO ([PackageIdentifier], [FilePath])
-brokenConfs = do brkn <- getBroken
+brokenConfs = do brkn <- getBroken -- getBroken
                  -- Check if we actually have to go look up files and
                  -- do IO.
                  if null brkn
@@ -219,23 +223,12 @@ addConf cmp conf = do cnts <- readFile conf
                         [([],_)] -> return cmp
                         rd       -> do let nm = cfNm rd
                                        return $ Map.insert nm conf cmp
-
   where
     -- It's not InstalledPackageInfo, as it can't read the modules
     cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
     cfNm = packageId . head . fst . head
 
--- Obtain GHC info about installed libs, etc.
-configureGHC :: IO ProgramConfiguration
-configureGHC = liftM snd
-               $ configure silent Nothing Nothing defaultProgramConfiguration
-
--- Return all packages registered with GHC
-pkgIndex :: IO PackageIndex
-pkgIndex = configureGHC >>= getInstalledPackages silent [GlobalPackageDB]
-
 -- Return the closure of all packages affected by breakage
 getBroken :: IO [PackageIdentifier]
-getBroken = do ind <- pkgIndex
-               let broken = map (installedPackageId . fst) $ brokenPackages ind
-               return $ map packageId $ reverseDependencyClosure ind broken
+getBroken = liftM (mapMaybe simpleParse . words)
+            $ ghcPkgRawOut ["check", "--simple-output"]
