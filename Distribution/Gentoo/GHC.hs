@@ -191,7 +191,7 @@ brokenPkgs = do putStrLn "Searching for Haskell libraries with broken dependenci
 
 -- .conf files from broken packages of this GHC version
 brokenConfs :: IO ([PackageIdentifier], [FilePath])
-brokenConfs = do brkn <- getBroken -- getBroken
+brokenConfs = do brkn <- getBroken
                  -- Check if we actually have to go look up files and
                  -- do IO.
                  if null brkn
