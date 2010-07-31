@@ -13,9 +13,10 @@ module Main where
 import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
+import Distribution.Gentoo.Util
 
 import Data.Either(partitionEithers)
-import Data.List(foldl1')
+import Data.List(foldl1', nub)
 import Data.Version(showVersion)
 import qualified Data.Set as Set
 import Data.Set(Set)
@@ -80,12 +81,9 @@ getPackages GhcUpgrade   = oldGhcPkgs
 getPackages DepCheck     = brokenPkgs
 getPackages AllInstalled = allInstalledPackages
 
-getPackages' :: BuildTarget -> IO (Set Package)
-getPackages' = liftM Set.fromList . getPackages
-
 allGetPackages :: Set BuildTarget -> IO [Package]
-allGetPackages = liftM (Set.toList . Set.unions)
-                   . mapM getPackages'
+allGetPackages = liftM nub
+                   . concatMapM getPackages
                    . Set.toList
 
 -- -----------------------------------------------------------------------------
