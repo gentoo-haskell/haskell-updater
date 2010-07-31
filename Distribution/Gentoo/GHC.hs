@@ -244,6 +244,11 @@ getBroken = liftM (mapMaybe simpleParse . words)
 -- -----------------------------------------------------------------------------
 
 allInstalledPackages :: IO [Package]
-allInstalledPackages = do cm <- readConf
-                          let confs = Map.elems cm
-                          checkPkgs "installed Haskell libraries" "installed" ([], confs)
+allInstalledPackages = do putStrLn "Finding all libraries installed with the \
+                                   \current version of GHC."
+                          libDir <- ghcLibDir
+                          let libDir' = BS.pack libDir
+                          pkgs <- liftM notGHC
+                                  $ pkgsHaveContent $ hasDirMatching (==libDir')
+                          pkgListPrint "installed" pkgs
+                          return pkgs
