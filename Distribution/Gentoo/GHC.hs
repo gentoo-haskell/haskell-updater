@@ -15,6 +15,7 @@ module Distribution.Gentoo.GHC
        , libFronts
        , oldGhcPkgs
        , brokenPkgs
+       , allInstalledPackages
        ) where
 
 import Distribution.Gentoo.Util
@@ -107,6 +108,63 @@ printList f = mapM_ (putStrLn . (++) "  * " . f)
 tryMaybe     :: (a -> Maybe b) -> a -> Either a b
 tryMaybe f a = maybe (Left a) Right $ f a
 
+
+type ConfMap = Map PackageIdentifier FilePath
+
+-- Attempt to match the provided broken package to one of the
+-- installed packages.
+matchConf :: ConfMap -> PackageIdentifier -> Either PackageIdentifier FilePath
+matchConf = tryMaybe . flip Map.lookup
+
+-- Read in all Gentoo .conf files from the current GHC version and
+-- create a Map
+readConf :: IO ConfMap
+readConf = ghcLibDir >>= confFiles >>= foldM addConf Map.empty
+
+-- Add this .conf file to the Map
+addConf          :: ConfMap -> FilePath -> IO ConfMap
+addConf cmp conf = do cnts <- readFile conf
+                      case (reads cnts) of
+                        []       -> return cmp
+                        -- ebuilds that have CABAL_CORE_LIB_GHC_PV set
+                        -- for this version of GHC will have a .conf
+                        -- file containing just []
+                        [([],_)] -> return cmp
+                        rd       -> do let nm = cfNm rd
+                                       return $ Map.insert nm conf cmp
+  where
+    -- It's not InstalledPackageInfo, as it can't read the modules
+    cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
+    cfNm = packageId . head . fst . head
+
+checkPkgs :: String -> String -> ([PackageIdentifier], [FilePath])
+             -> IO [Package]
+checkPkgs msg typ (pns,cnfs)
+  = do putStrLn $ "Searching for " ++ msg ++ "."
+       -- (pns, cnfs) <- brokenConfs
+       unless (null pns)
+                  $ unknownPackages pns
+       (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
+       unless (null nI)
+                  $ unknownFiles nI
+       let pkgs' = notGHC pkgs
+       pkgListPrint typ pkgs'
+       return pkgs
+    where
+      hasFile' f = do mp <- hasFile f
+                      return $ maybe (Left f) Right mp
+
+      unknownPackages ps
+          = do putStrLn "\nThe following packages don't seem \
+                        \to have been installed by your package manager:"
+               printList display ps
+
+      unknownFiles fs
+          = do putStrLn "\nThe following files are those corresponding \
+                         \to packages installed by your package manager\n\
+                         \which can't be matched up to the packages that own them."
+               printList id fs
+
 -- -----------------------------------------------------------------------------
 
 -- Finding packages installed with other versions of GHC
@@ -164,30 +222,8 @@ libFronts = map BS.pack
 
 -- Finding broken packages in this install of GHC.
 brokenPkgs :: IO [Package]
-brokenPkgs = do putStrLn "Searching for Haskell libraries with broken dependencies."
-                (pns, cnfs) <- brokenConfs
-                unless (null pns)
-                           $ unknownPackages pns
-                (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
-                unless (null nI)
-                           $ unknownFiles nI
-                let pkgs' = notGHC pkgs
-                pkgListPrint "broken" pkgs'
-                return pkgs
-    where
-      hasFile' f = do mp <- hasFile f
-                      return $ maybe (Left f) Right mp
-
-      unknownPackages ps
-          = do putStrLn "\nThe following packages don't seem \
-                        \to have been installed by your package manager:"
-               printList display ps
-
-      unknownFiles fs
-          = do putStrLn "\nThe following files are those corresponding \
-                         \to packages installed by your package manager\n\
-                         \which can't be matched up to the packages that own them."
-               printList id fs
+brokenPkgs = brokenConfs >>=
+             checkPkgs "Haskell libraries with broken dependencies" "broken"
 
 -- .conf files from broken packages of this GHC version
 brokenConfs :: IO ([PackageIdentifier], [FilePath])
@@ -200,35 +236,14 @@ brokenConfs = do brkn <- getBroken
                            return $ partitionEithers
                                       $ map (matchConf cnfs) brkn
 
-type ConfMap = Map PackageIdentifier FilePath
-
--- Attempt to match the provided broken package to one of the
--- installed packages.
-matchConf :: ConfMap -> PackageIdentifier -> Either PackageIdentifier FilePath
-matchConf = tryMaybe . flip Map.lookup
-
--- Read in all Gentoo .conf files from the current GHC version and
--- create a Map
-readConf :: IO ConfMap
-readConf = ghcLibDir >>= confFiles >>= foldM addConf Map.empty
-
--- Add this .conf file to the Map
-addConf          :: ConfMap -> FilePath -> IO ConfMap
-addConf cmp conf = do cnts <- readFile conf
-                      case (reads cnts) of
-                        []       -> return cmp
-                        -- ebuilds that have CABAL_CORE_LIB_GHC_PV set
-                        -- for this version of GHC will have a .conf
-                        -- file containing just []
-                        [([],_)] -> return cmp
-                        rd       -> do let nm = cfNm rd
-                                       return $ Map.insert nm conf cmp
-  where
-    -- It's not InstalledPackageInfo, as it can't read the modules
-    cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
-    cfNm = packageId . head . fst . head
-
 -- Return the closure of all packages affected by breakage
 getBroken :: IO [PackageIdentifier]
 getBroken = liftM (mapMaybe simpleParse . words)
             $ ghcPkgRawOut ["check", "--simple-output"]
+
+-- -----------------------------------------------------------------------------
+
+allInstalledPackages :: IO [Package]
+allInstalledPackages = do cm <- readConf
+                          let confs = Map.elems cm
+                          checkPkgs "installed Haskell libraries" "installed" ([], confs)

@@ -72,11 +72,13 @@ runAction rm (Build ts) = do systemInfo rm
 
 data BuildTarget = GhcUpgrade
                  | DepCheck
+                 | AllInstalled
                    deriving (Eq, Ord, Show, Read)
 
-getPackages            :: BuildTarget -> IO [Package]
-getPackages GhcUpgrade = oldGhcPkgs
-getPackages DepCheck   = brokenPkgs
+getPackages              :: BuildTarget -> IO [Package]
+getPackages GhcUpgrade   = oldGhcPkgs
+getPackages DepCheck     = brokenPkgs
+getPackages AllInstalled = allInstalledPackages
 
 getPackages' :: BuildTarget -> IO (Set Package)
 getPackages' = liftM Set.fromList . getPackages
@@ -124,6 +126,7 @@ data Flag = HelpFlag
           | CustomPMFlag String
           | Check
           | Upgrade
+          | RebuildAll
           | Pretend
 	  | NoDeep
           deriving (Eq, Ord, Show, Read)
@@ -165,6 +168,7 @@ flagToAction HelpFlag    = Right Help
 flagToAction VersionFlag = Right Version
 flagToAction Check       = Right . Build $ Set.singleton DepCheck
 flagToAction Upgrade     = Right . Build $ Set.singleton GhcUpgrade
+flagToAction RebuildAll  = Right . Build $ Set.singleton AllInstalled
 flagToAction f           = Left f
 
 flagToPM                   :: Flag -> Either Flag PkgManager
@@ -178,6 +182,8 @@ options =
       "Check dependencies of Haskell packages."
     , Option ['u']      ["upgrade"]         (NoArg Upgrade)
       "Rebuild Haskell packages after a GHC upgrade."
+    , Option []         ["all"]             (NoArg RebuildAll)
+      "Rebuild all Haskell libraries built with current GHC."
     , Option ['P']      ["package-manager"] (ReqArg PM "PM")
       $ "Use package manager PM, where PM can be one of:\n"
             ++ pmList ++ defPM
