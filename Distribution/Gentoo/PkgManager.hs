@@ -109,7 +109,7 @@ defaultPMFlags (InvalidPM _)   = undefined
 buildCmd          :: PkgManager -> [PMFlag] -> [Package] -> String
 buildCmd pm fs ps = unwords $ pmCommand pm : fs' ++ ps'
     where
-      fs' = mapMaybe (flagRep pm) fs ++ defaultPMFlags pm
+      fs' = defaultPMFlags pm ++ mapMaybe (flagRep pm) fs
       ps' = map printPkg ps
 
 -- -----------------------------------------------------------------------------
