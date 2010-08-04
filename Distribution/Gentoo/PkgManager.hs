@@ -36,6 +36,8 @@ import System.Environment(getEnv)
 data PkgManager = Portage
                 | PkgCore
                 | Paludis
+                | Cave -- alternate package manager that comes with
+                       -- paludis; will eventually replace paludis
                 | InvalidPM String
                 | CustomPM String
                   deriving (Eq, Ord, Show, Read)
@@ -71,6 +73,7 @@ pmNameMap :: Map String PkgManager
 pmNameMap = M.fromList [ ("portage", Portage)
                        , ("pkgcore", PkgCore)
                        , ("paludis", Paludis)
+                       , ("cave",    Cave)
                        ]
 
 pmNameMap' :: Map PkgManager String
@@ -95,16 +98,22 @@ pmCommand                :: PkgManager -> String
 pmCommand Portage        = "emerge"
 pmCommand PkgCore        = "pmerge"
 pmCommand Paludis        = "paludis"
+pmCommand Cave           = "cave"
 pmCommand (CustomPM cmd) = cmd
 pmCommand (InvalidPM _)  = undefined
 
-defaultPMFlags                 :: PkgManager -> [String]
-defaultPMFlags Portage         = ["--oneshot", "--keep-going"]
-defaultPMFlags PkgCore         = ["--deep", "--oneshot", "--ignore-failures"]
-defaultPMFlags Paludis         = [ "--install", "--preserve-world"
-                                 , "--continue-on-failure if-independent"]
-defaultPMFlags CustomPM{}      = []
-defaultPMFlags (InvalidPM _)   = undefined
+defaultPMFlags               :: PkgManager -> [String]
+defaultPMFlags Portage       = ["--oneshot", "--keep-going"]
+defaultPMFlags PkgCore       = ["--deep", "--oneshot", "--ignore-failures"]
+defaultPMFlags Paludis       = [ "--install", "--preserve-world"
+                               , "--continue-on-failure if-independent"]
+                             -- Here, --execute will be overridden by
+                             -- --no-execute when the --pretend option
+                             -- is set.
+defaultPMFlags Cave          = [ "resolve", "--execute", "--preserve-world"
+                               , "--continue-on-failure if-independent"]
+defaultPMFlags CustomPM{}    = []
+defaultPMFlags (InvalidPM _) = undefined
 
 buildCmd          :: PkgManager -> [PMFlag] -> [Package] -> String
 buildCmd pm fs ps = unwords $ pmCommand pm : fs' ++ ps'
@@ -124,6 +133,7 @@ flagRep               :: PkgManager -> PMFlag -> Maybe String
 flagRep Portage       = portagePMFlag
 flagRep PkgCore       = pkgcorePMFlag
 flagRep Paludis       = paludisPMFlag
+flagRep Cave          = cavePMFlag
 flagRep CustomPM{}    = const Nothing -- Can't tell how flags would work.
 flagRep (InvalidPM _) = undefined
 
@@ -140,3 +150,8 @@ paludisPMFlag                :: PMFlag -> Maybe String
 paludisPMFlag PretendBuild   = Just "--pretend"
 paludisPMFlag UpdateDeep     = Just "--dl-upgrade always"
 paludisPMFlag UpdateAsNeeded = Just "--dl-upgrade as-needed --dl-new-slots as-needed"
+
+cavePMFlag                :: PMFlag -> Maybe String
+cavePMFlag PretendBuild   = Just "--no-execute"
+cavePMFlag UpdateDeep     = Just "--complete"
+cavePMFlag UpdateAsNeeded = Just "--lazy"
