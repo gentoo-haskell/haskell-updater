@@ -36,8 +36,6 @@ import System.Environment(getEnv)
 data PkgManager = Portage
                 | PkgCore
                 | Paludis
-                | Cave -- alternate package manager that comes with
-                       -- paludis; will eventually replace paludis
                 | InvalidPM String
                 | CustomPM String
                   deriving (Eq, Ord, Show, Read)
@@ -73,7 +71,6 @@ pmNameMap :: Map String PkgManager
 pmNameMap = M.fromList [ ("portage", Portage)
                        , ("pkgcore", PkgCore)
                        , ("paludis", Paludis)
-                       , ("cave",    Cave)
                        ]
 
 pmNameMap' :: Map PkgManager String
@@ -97,20 +94,14 @@ stringToCustomPM = CustomPM
 pmCommand                :: PkgManager -> String
 pmCommand Portage        = "emerge"
 pmCommand PkgCore        = "pmerge"
-pmCommand Paludis        = "paludis"
-pmCommand Cave           = "cave"
+pmCommand Paludis        = "cave"
 pmCommand (CustomPM cmd) = cmd
 pmCommand (InvalidPM _)  = undefined
 
 defaultPMFlags               :: PkgManager -> [String]
 defaultPMFlags Portage       = ["--oneshot", "--keep-going"]
 defaultPMFlags PkgCore       = ["--deep", "--oneshot", "--ignore-failures"]
-defaultPMFlags Paludis       = [ "--install", "--preserve-world"
-                               , "--continue-on-failure if-independent"]
-                             -- Here, --execute will be overridden by
-                             -- --no-execute when the --pretend option
-                             -- is set.
-defaultPMFlags Cave          = [ "resolve", "--execute", "--preserve-world"
+defaultPMFlags Paludis       = [ "resolve", "--execute", "--preserve-world"
                                , "--continue-on-failure if-independent"]
 defaultPMFlags CustomPM{}    = []
 defaultPMFlags (InvalidPM _) = undefined
@@ -132,8 +123,7 @@ data PMFlag = PretendBuild
 flagRep               :: PkgManager -> PMFlag -> Maybe String
 flagRep Portage       = portagePMFlag
 flagRep PkgCore       = pkgcorePMFlag
-flagRep Paludis       = paludisPMFlag
-flagRep Cave          = cavePMFlag
+flagRep Paludis       = cavePMFlag
 flagRep CustomPM{}    = const Nothing -- Can't tell how flags would work.
 flagRep (InvalidPM _) = undefined
 
@@ -145,11 +135,6 @@ portagePMFlag UpdateAsNeeded = Nothing
 pkgcorePMFlag :: PMFlag -> Maybe String
 pkgcorePMFlag = portagePMFlag -- The options are the same for the 3
                               -- current flags.
-
-paludisPMFlag                :: PMFlag -> Maybe String
-paludisPMFlag PretendBuild   = Just "--pretend"
-paludisPMFlag UpdateDeep     = Just "--dl-upgrade always"
-paludisPMFlag UpdateAsNeeded = Just "--dl-upgrade as-needed --dl-new-slots as-needed"
 
 cavePMFlag                :: PMFlag -> Maybe String
 cavePMFlag PretendBuild   = Just "--no-execute"
