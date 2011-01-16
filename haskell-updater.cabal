@@ -22,7 +22,7 @@ Author:              Ivan Lazar Miljenovic,
                      Lennart Kolmodin,
                      Stephan Friedrichs,
                      Emil Karlson
-Maintainer:          Ivan.Miljenovic@gmail.com
+Maintainer:          haskell@gentoo.org
 Cabal-Version:       >= 1.6
 Build-Type:          Simple
 Extra-Source-Files:  TODO
