@@ -9,7 +9,8 @@ Description:         haskell-updater rebuilds Haskell packages on Gentoo
                      GHC's boot libraries so as to have no external
                      dependencies.
 
-                     This version is for GHC-6.12 with Cabal-1.8.
+                     This version is for GHC-6.12 with Cabal-1.8 and
+                     GHC-7.0 with Cabal-1.0.
 Category:            Distribution
 License:             GPL
 License-file:        COPYRIGHT
@@ -42,10 +43,10 @@ Executable haskell-updater {
     Ghc-Prof-Options:   -auto-all
 
     Build-Depends:      base == 4.*,
-                        Cabal == 1.8.*,
-                        containers < 0.4,
-                        filepath   < 1.2,
-                        directory  < 1.1,
+                        Cabal >= 1.8 && < 1.11,
+                        containers < 0.5,
+                        filepath   < 1.3,
+                        directory  < 1.2,
                         bytestring < 1.0,
                         process    < 1.1
 }
