@@ -126,7 +126,7 @@ data Flag = HelpFlag
           | Upgrade
           | RebuildAll
           | Pretend
-	  | NoDeep
+          | NoDeep
           deriving (Eq, Ord, Show, Read)
 
 parseArgs :: IO (RunModifier, Action)
