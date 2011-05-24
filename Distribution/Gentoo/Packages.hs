@@ -161,10 +161,12 @@ parseContents cp = do ex <- doesFileExist cFile
     -- how spaces are represented in file names.
     -- This might cause a problem if there is more than a single
     -- space (or a tab) in the filename...
+    -- Also require at least 3 words in case of an object, as the CONTENTS
+    -- file can be corrept (fixes an actual problem).
     parseCLine :: [ByteString] -> Maybe Content
     parseCLine (tp:ln)
       | tp == dir = Just . Dir . BS.unwords $ ln
-      | tp == obj = Just . Obj . BS.unwords $ dropLastTwo ln
+      | tp == obj && length ln >= 3 = Just . Obj . BS.unwords $ dropLastTwo ln
       | otherwise = Nothing
     parseCLine [] = Nothing
 
