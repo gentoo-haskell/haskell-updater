@@ -141,7 +141,6 @@ checkPkgs :: String -> String -> ([PackageIdentifier], [FilePath])
              -> IO [Package]
 checkPkgs msg typ (pns,cnfs)
   = do putStrLn $ "Searching for " ++ msg ++ "."
-       -- (pns, cnfs) <- brokenConfs
        unless (null pns)
                   $ unknownPackages pns
        (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
