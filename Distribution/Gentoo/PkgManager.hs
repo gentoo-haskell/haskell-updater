@@ -106,10 +106,10 @@ defaultPMFlags Paludis       = [ "resolve", "--execute", "--preserve-world"
 defaultPMFlags CustomPM{}    = []
 defaultPMFlags (InvalidPM _) = undefined
 
-buildCmd          :: PkgManager -> [PMFlag] -> [Package] -> String
-buildCmd pm fs ps = unwords $ pmCommand pm : fs' ++ ps'
+buildCmd :: PkgManager -> [PMFlag] -> [String] -> [Package] -> String
+buildCmd pm fs raw_pm_flags ps = unwords $ pmCommand pm : fs' ++ ps'
     where
-      fs' = defaultPMFlags pm ++ mapMaybe (flagRep pm) fs
+      fs' = defaultPMFlags pm ++ mapMaybe (flagRep pm) fs ++ raw_pm_flags
       ps' = map printPkg ps
 
 -- -----------------------------------------------------------------------------

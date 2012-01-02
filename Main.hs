@@ -92,6 +92,7 @@ allGetPackages = liftM nub
 data RunModifier = RM { pkgmgr   :: PkgManager
                       , flags    :: [PMFlag]
                       , withCmd  :: WithCmd
+                      , rawPMArgs :: [String]
                       }
                    deriving (Eq, Ord, Show, Read)
 
@@ -113,7 +114,7 @@ buildPkgs       :: RunModifier -> [Package] -> IO a
 buildPkgs _  [] = success "\nNothing to build!"
 buildPkgs rm ps = runCmd (withCmd rm) cmd
     where
-      cmd = buildCmd (pkgmgr rm) (flags rm) ps
+      cmd = buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
 
 -- -----------------------------------------------------------------------------
 -- Command-line flags
@@ -132,17 +133,18 @@ data Flag = HelpFlag
 parseArgs :: IO (RunModifier, Action)
 parseArgs = do args <- getArgs
                defPM <- defaultPM
-               argParser defPM $ getOpt Permute options args
+               argParser defPM $ getOpt' Permute options args
 
-argParser                    :: PkgManager -> ([Flag], [String], [String])
+argParser                    :: PkgManager -> ([Flag], [String], [String], [String])
                                 -> IO (RunModifier, Action)
-argParser dPM (fls, oth, []) = do unless (null oth)
-                                    $ putErrLn
-                                    $ unwords $ "Unknown options:" : oth
-                                  unless (null bPms)
-                                    $ putErrLn
-                                    $ unwords $ "Unknown package managers:" : bPms
-                                  return (rm, a)
+argParser dPM (fls, nonoptions, unrecognized, []) =
+    do unless (null unrecognized)
+         $ putErrLn
+         $ unwords $ "Unknown options:" : unrecognized
+       unless (null bPms)
+         $ putErrLn
+         $ unwords $ "Unknown package managers:" : bPms
+       return (rm, a)
     where
       (fls', as) = partitionBy flagToAction fls
       a = combineAllActions as
@@ -157,9 +159,10 @@ argParser dPM (fls, oth, []) = do unless (null oth)
               , flags    = pmFlags
                 -- We need to get Flags that represent this as well.
               , withCmd  = PrintAndRun
+              , rawPMArgs = nonoptions
               }
 
-argParser _ (_, _, errs)     = die $ unwords $ "Errors in arguments:" : errs
+argParser _ (_, _, _, errs)     = die $ unwords $ "Errors in arguments:" : errs
 
 flagToAction             :: Flag -> Either Flag Action
 flagToAction HelpFlag    = Right Help
@@ -227,7 +230,7 @@ progInfo = do pName <- getProgName
                   \            * Haskell dependency upgrade\n\
                   \         Default action is to do both.\n\
                   \\n\
-                  \Usage: " ++ pName ++ " [Option]\n\
+                  \Usage: " ++ pName ++ " [Options [-- [PM options]]\n\
                   \\n\
                   \\n\
                   \Options:"
@@ -240,7 +243,9 @@ systemInfo rm = do ver    <- ghcVersion
                    putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
                    putStrLn $ "  * Executable: " ++ pLoc
                    putStrLn $ "  * Library directory: " ++ libDir
-                   putStrLn $ "  * Package manager: " ++ nameOfPM (pkgmgr rm)
+                   putStrLn $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
+                   unless (null (rawPMArgs rm)) $
+                       putStrLn $ "  * PM auxiliary arguments: " ++ unwords (rawPMArgs rm)
                    putStrLn ""
 
 -- -----------------------------------------------------------------------------
