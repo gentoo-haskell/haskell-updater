@@ -25,8 +25,8 @@ import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
 import System.IO(hPutStrLn, stderr)
-import Control.Monad(liftM, liftM2, unless)
-import System.Process(system)
+import Control.Monad(liftM, unless)
+import System.Process(rawSystem)
 
 -- -----------------------------------------------------------------------------
 -- The overall program.
@@ -102,19 +102,21 @@ data WithCmd = RunOnly
              | PrintAndRun
                deriving (Eq, Ord, Show, Read)
 
-runCmd           :: WithCmd -> String -> IO a
-runCmd RunOnly   = runCommand
-runCmd PrintOnly = success
-runCmd PrintAndRun = liftM2 (>>) putStrLn runCommand
+runCmd :: WithCmd -> String -> [String] -> IO a
+runCmd mode cmd args = case mode of
+        RunOnly     ->                      runCommand cmd args
+        PrintOnly   -> success cmd_line
+        PrintAndRun -> putStrLn cmd_line >> runCommand cmd args
+    where cmd_line = unwords (cmd:args)
 
-runCommand     :: String -> IO a
-runCommand cmd = system cmd >>= exitWith
+runCommand     :: String -> [String] -> IO a
+runCommand cmd args = rawSystem cmd args >>= exitWith
 
 buildPkgs       :: RunModifier -> [Package] -> IO a
 buildPkgs _  [] = success "\nNothing to build!"
-buildPkgs rm ps = runCmd (withCmd rm) cmd
+buildPkgs rm ps = runCmd (withCmd rm) cmd args
     where
-      cmd = buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
+      (cmd, args) = buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
 
 -- -----------------------------------------------------------------------------
 -- Command-line flags
