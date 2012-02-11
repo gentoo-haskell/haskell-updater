@@ -98,10 +98,17 @@ pmCommand (CustomPM cmd) = cmd
 pmCommand (InvalidPM _)  = undefined
 
 defaultPMFlags               :: PkgManager -> [String]
-defaultPMFlags Portage       = ["--oneshot", "--keep-going"]
-defaultPMFlags PkgCore       = ["--deep", "--oneshot", "--ignore-failures"]
-defaultPMFlags Paludis       = [ "resolve", "--execute", "--preserve-world"
-                               , "--continue-on-failure if-independent"]
+defaultPMFlags Portage       = [ "--oneshot"
+                               , "--keep-going"]
+defaultPMFlags PkgCore       = [ "--deep"
+                               , "--oneshot"
+                               , "--ignore-failures"
+                               ]
+defaultPMFlags Paludis       = [ "resolve"
+                               , "--execute"
+                               , "--preserve-world"
+                               , "--continue-on-failure", "if-independent"
+                               ]
 defaultPMFlags CustomPM{}    = []
 defaultPMFlags (InvalidPM _) = undefined
 
