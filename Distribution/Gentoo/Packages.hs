@@ -3,7 +3,6 @@
    Description : Dealing with installed packages on Gentoo.
    Copyright   : (c) Ivan Lazar Miljenovic, Lennart Kolmodin 2009
    License     : GPL-2 or later
-   Maintainer  : Ivan.Miljenovic@gmail.com
 
    This module defines helper functions that deal with installed
    packages in Gentoo.

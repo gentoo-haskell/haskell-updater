@@ -3,7 +3,6 @@
    Description : Using package managers in Gentoo.
    Copyright   : (c) Ivan Lazar Miljenovic, Emil Karlson 2010
    License     : GPL-2 or later
-   Maintainer  : Ivan.Miljenovic@gmail.com
 
    This module defines ways to use different Gentoo package managers.
  -}

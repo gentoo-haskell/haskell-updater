@@ -3,7 +3,6 @@
    Description : The haskell-updater executable
    Copyright   : (c) Ivan Lazar Miljenovic, Stephan Friedrichs, Emil Karlson 2010
    License     : GPL-2 or later
-   Maintainer  : Ivan.Miljenovic@gmail.com
 
    The executable module of haskell-updater, which finds Haskell
    packages to rebuild after a dep upgrade or a GHC upgrade.

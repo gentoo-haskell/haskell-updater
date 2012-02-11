@@ -3,7 +3,6 @@
    Description : Utility functions
    Copyright   : (c) Ivan Lazar Miljenovic 2009
    License     : GPL-2 or later
-   Maintainer  : Ivan.Miljenovic@gmail.com
 
    Common utility functions.
  -}
