@@ -29,8 +29,8 @@ Build-Type:          Simple
 Extra-Source-Files:  TODO
 
 Source-Repository head
-    Type:         darcs
-    Location:     http://code.haskell.org/gentoo/haskell-updater/
+    Type:         git
+    Location:     git://github.com/gentoo-haskell/haskell-updater.git
 
 Executable haskell-updater {
 
