@@ -194,7 +194,7 @@ options =
       "Only pretend to build packages."
     , Option []         ["no-deep"]         (NoArg NoDeep)
       "Don't pull deep dependencies (--deep with emerge)."
-    , Option ['v']      ["version"]         (NoArg VersionFlag)
+    , Option ['V']      ["version"]         (NoArg VersionFlag)
       "Version information."
     , Option ['h', '?'] ["help"]            (NoArg HelpFlag)
       "Print this help message."
