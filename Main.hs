@@ -140,11 +140,9 @@ argParser                    :: PkgManager -> ([Flag], [String], [String], [Stri
                                 -> IO (RunModifier, Action)
 argParser dPM (fls, nonoptions, unrecognized, []) =
     do unless (null unrecognized)
-         $ putErrLn
-         $ unwords $ "Unknown options:" : unrecognized
+         $ die $ unwords $ "Unknown options:" : unrecognized
        unless (null bPms)
-         $ putErrLn
-         $ unwords $ "Unknown package managers:" : bPms
+         $ die $ unwords $ "Unknown package managers:" : bPms
        return (rm, a)
     where
       (fls', as) = partitionBy flagToAction fls
@@ -257,7 +255,7 @@ success msg = do putStrLn msg
                  exitWith ExitSuccess
 
 die     :: String -> IO a
-die msg = do putErrLn msg
+die msg = do putErrLn ("ERROR: " ++ msg)
              exitWith (ExitFailure 1)
 
 putErrLn :: String -> IO ()
