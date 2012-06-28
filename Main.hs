@@ -7,7 +7,7 @@
    The executable module of haskell-updater, which finds Haskell
    packages to rebuild after a dep upgrade or a GHC upgrade.
 -}
-module Main where
+module Main (main) where
 
 import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
@@ -214,11 +214,6 @@ help = progInfo >>= success
 
 version :: IO a
 version = fmap (++ '-' : showVersion Paths.version) getProgName >>= success
-
-err     :: String -> IO a
-err msg = liftM addMsg progInfo >>= die
-  where
-    addMsg str = msg ++ "\n\n"++ str
 
 progInfo :: IO String
 progInfo = do pName <- getProgName
