@@ -18,7 +18,6 @@ import Data.Either(partitionEithers)
 import Data.List(foldl1', nub)
 import Data.Version(showVersion)
 import qualified Data.Set as Set
-import Data.Set(Set)
 import qualified Paths_haskell_updater as Paths(version)
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
@@ -38,7 +37,7 @@ main = uncurry runAction =<< parseArgs
 
 data Action = Help
             | Version
-            | Build { targets :: Set BuildTarget }
+            | Build { targets :: Set.Set BuildTarget }
               -- If anything is added here after Build, MAKE SURE YOU
               -- UPDATE combineActions or it won't always work!
               deriving (Eq, Ord, Show, Read)
@@ -80,7 +79,7 @@ getPackages GhcUpgrade   = oldGhcPkgs
 getPackages DepCheck     = brokenPkgs
 getPackages AllInstalled = allInstalledPackages
 
-allGetPackages :: Set BuildTarget -> IO [Package]
+allGetPackages :: Set.Set BuildTarget -> IO [Package]
 allGetPackages = liftM nub
                    . concatMapM getPackages
                    . Set.toList
