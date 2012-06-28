@@ -6,7 +6,12 @@
 
    Common utility functions.
  -}
-module Distribution.Gentoo.Util where
+module Distribution.Gentoo.Util
+       ( BSFilePath
+       , concatMapM
+       , breakAll
+       , getDirectoryContents'
+       ) where
 
 import Data.List(groupBy)
 import Data.ByteString.Char8(ByteString)
