@@ -15,7 +15,6 @@ module Distribution.Gentoo.PkgManager
        , defaultPM
        , defaultPMName
        , nameOfPM
-       , dummy
        , PMFlag(..)
        , buildCmd
        ) where
@@ -38,10 +37,6 @@ data PkgManager = Portage
                 | InvalidPM String
                 | CustomPM String
                   deriving (Eq, Ord, Show, Read)
-
--- | A dummy package manager used for testing purposes.
-dummy :: PkgManager
-dummy = CustomPM "echo"
 
 -- | The default package manager.  If the environment variable
 --   @PACKAGE_MANAGER@ exists, use that; otherwise default to
