@@ -56,8 +56,9 @@ combineAllActions = emptyElse defaultAction (foldl1' combineActions)
 -- the lower of one is a Build that they're both build.
 combineActions       :: Action -> Action -> Action
 combineActions a1 a2 = case (a1 `min` a2) of
+                         Help    -> Help
+                         Version -> Version
                          Build{} -> Build $ targets a1 `Set.union` targets a2
-                         a       -> a
 
 runAction               :: RunModifier -> Action -> IO a
 runAction _  Help       = help
