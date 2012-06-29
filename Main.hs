@@ -218,15 +218,15 @@ progInfo :: IO String
 progInfo = do pName <- getProgName
               return $ usageInfo (header pName) options
   where
-    header pName = pName ++ " -- Find and rebuild packages broken due to either:\n\
-                  \            * GHC upgrade\n\
-                  \            * Haskell dependency upgrade\n\
-                  \         Default action is to do both.\n\
-                  \\n\
-                  \Usage: " ++ pName ++ " [Options [-- [PM options]]\n\
-                  \\n\
-                  \\n\
-                  \Options:"
+    header pName = unlines [ pName ++ " -- Find and rebuild packages broken due to either:"
+                           , "            * GHC upgrade"
+                           , "            * Haskell dependency upgrade"
+                           , "         Default action is to do both."
+                           , ""
+                           , "Usage: " ++ pName ++ " [Options [-- [PM options]]"
+                           , ""
+                           , ""
+                           , "Options:"]
 
 systemInfo    :: RunModifier -> IO ()
 systemInfo rm = do ver    <- ghcVersion
