@@ -30,8 +30,11 @@ import System.Process(rawSystem)
 -- The overall program.
 
 main :: IO ()
-main = uncurry runAction =<< parseArgs
-
+main = do args <- getArgs
+          defPM <- defaultPM
+          case parseArgs defPM args of
+              Left err -> die err
+              Right a  -> uncurry runAction a
 -- -----------------------------------------------------------------------------
 -- The possible actions that haskell-updater can perform.
 
@@ -131,20 +134,18 @@ data Flag = HelpFlag
           | NoDeep
           deriving (Eq, Ord, Show, Read)
 
-parseArgs :: IO (RunModifier, Action)
-parseArgs = do args <- getArgs
-               defPM <- defaultPM
-               argParser defPM $ getOpt' Permute options args
+parseArgs :: PkgManager -> [String] -> Either String (RunModifier, Action)
+parseArgs defPM args = argParser defPM $ getOpt' Permute options args
 
-argParser                    :: PkgManager -> ([Flag], [String], [String], [String])
-                                -> IO (RunModifier, Action)
-argParser dPM (fls, nonoptions, unrecognized, []) =
-    do unless (null unrecognized)
-         $ die $ unwords $ "Unknown options:" : unrecognized
-       unless (null bPms)
-         $ die $ unwords $ "Unknown package managers:" : bPms
-       return (rm, a)
-    where
+argParser :: PkgManager
+          -> ([Flag], [String], [String], [String])
+          -> Either String (RunModifier, Action)
+argParser dPM (fls, nonoptions, unrecognized, errs)
+    | (not . null) errs         = Left $ unwords $ "Errors in arguments:" : errs
+    | (not . null) unrecognized = Left $ unwords $ "Unknown options:" : unrecognized
+    | (not . null) bPms         = Left $ unwords $ "Unknown package managers:" : bPms
+    | otherwise                 = Right (rm, a)
+  where
       (fls', as) = partitionBy flagToAction fls
       a = combineAllActions as
       (opts, pms) = partitionBy flagToPM fls'
@@ -160,8 +161,6 @@ argParser dPM (fls, nonoptions, unrecognized, []) =
               , withCmd  = PrintAndRun
               , rawPMArgs = nonoptions
               }
-
-argParser _ (_, _, _, errs)     = die $ unwords $ "Errors in arguments:" : errs
 
 flagToAction             :: Flag -> Either Flag Action
 flagToAction HelpFlag    = Right Help
