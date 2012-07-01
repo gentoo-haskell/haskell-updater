@@ -15,6 +15,7 @@ module Distribution.Gentoo.GHC
        , oldGhcPkgs
        , brokenPkgs
        , allInstalledPackages
+       , pkgListPrint
        ) where
 
 import Distribution.Gentoo.Util
@@ -242,11 +243,8 @@ getBroken = liftM (mapMaybe simpleParse . words)
 -- -----------------------------------------------------------------------------
 
 allInstalledPackages :: IO [Package]
-allInstalledPackages = do putStrLn "Finding all libraries installed with the \
-                                   \current version of GHC."
-                          libDir <- ghcLibDir
+allInstalledPackages = do libDir <- ghcLibDir
                           let libDir' = BS.pack libDir
                           pkgs <- liftM notGHC
                                   $ pkgsHaveContent $ hasDirMatching (==libDir')
-                          pkgListPrint "installed" pkgs
                           return pkgs

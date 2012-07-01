@@ -81,7 +81,11 @@ data BuildTarget = GhcUpgrade
 getPackages              :: BuildTarget -> IO [Package]
 getPackages GhcUpgrade   = oldGhcPkgs
 getPackages DepCheck     = brokenPkgs
-getPackages AllInstalled = allInstalledPackages
+getPackages AllInstalled =
+    do putStrLn "Finding all libraries installed with the current version of GHC."
+       pkgs <- allInstalledPackages
+       pkgListPrint "installed" pkgs
+       return pkgs
 
 allGetPackages :: Set.Set BuildTarget -> IO [Package]
 allGetPackages = liftM nub
