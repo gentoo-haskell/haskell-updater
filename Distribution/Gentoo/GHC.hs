@@ -11,7 +11,6 @@ module Distribution.Gentoo.GHC
        ( ghcVersion
        , ghcLoc
        , ghcLibDir
-       , libFronts
        , oldGhcPkgs
        , brokenPkgs
        , allInstalledPackages
