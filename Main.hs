@@ -14,6 +14,8 @@ import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.Util
 
+import Distribution.Text(display)
+
 import Data.Either(partitionEithers)
 import Data.List(foldl1', nub)
 import Data.Version(showVersion)
@@ -84,7 +86,24 @@ getPackages GhcUpgrade   =
        pkgs <- oldGhcPkgs
        pkgListPrint "old" pkgs
        return pkgs
-getPackages DepCheck     = brokenPkgs
+getPackages DepCheck     =
+    do putStrLn "Searching for Haskell libraries with broken dependencies."
+       (pkgs, unknown_packages, unknown_files)  <- brokenPkgs
+       printUnknownPackages unknown_packages
+       printUnknownFiles unknown_files
+       pkgListPrint "broken" (notGHC pkgs)
+       return pkgs
+
+  where printUnknownPackages [] = return ()
+        printUnknownPackages ps =
+            do putStrLn "\nThe following packages don't seem to have been installed by your package manager:"
+               printList display ps
+        printUnknownFiles [] = return ()
+        printUnknownFiles fs =
+            do putStrLn $ "\nThe following files are those corresponding to packages installed by your package manager\n" ++
+                          "which can't be matched up to the packages that own them."
+               printList id fs
+
 getPackages AllInstalled =
     do putStrLn "Finding all libraries installed with the current version of GHC."
        pkgs <- allInstalledPackages

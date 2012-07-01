@@ -15,6 +15,7 @@ module Distribution.Gentoo.GHC
        , brokenPkgs
        , allInstalledPackages
        , pkgListPrint
+       , printList
        ) where
 
 import Distribution.Gentoo.Util
@@ -25,7 +26,7 @@ import Distribution.Simple.Utils(rawSystemStdInOut)
 import Distribution.Verbosity(silent)
 import Distribution.Package(PackageIdentifier, packageId)
 import Distribution.InstalledPackageInfo(InstalledPackageInfo_)
-import Distribution.Text(display, simpleParse)
+import Distribution.Text(simpleParse)
 
 -- Other imports
 import Data.Char(isDigit)
@@ -38,8 +39,7 @@ import System.FilePath((</>), takeExtension, pathSeparator)
 import System.Directory( canonicalizePath
                        , doesDirectoryExist
                        , findExecutable)
-import Control.Monad(foldM, liftM, unless)
-
+import Control.Monad(foldM, liftM)
 -- -----------------------------------------------------------------------------
 
 -- Common helper utils, etc.
@@ -136,32 +136,14 @@ addConf cmp conf = do cnts <- readFile conf
     cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
     cfNm = packageId . head . fst . head
 
-checkPkgs :: String -> String -> ([PackageIdentifier], [FilePath])
-             -> IO [Package]
-checkPkgs msg typ (pns,cnfs)
-  = do putStrLn $ "Searching for " ++ msg ++ "."
-       unless (null pns)
-                  $ unknownPackages pns
-       (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
-       unless (null nI)
-                  $ unknownFiles nI
-       let pkgs' = notGHC pkgs
-       pkgListPrint typ pkgs'
-       return pkgs
+checkPkgs :: ([PackageIdentifier], [FilePath])
+             -> IO ([Package],[PackageIdentifier],[FilePath])
+checkPkgs (pns,cnfs)
+  = do (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
+       return (pkgs, pns, nI)
     where
       hasFile' f = do mp <- hasFile f
                       return $ maybe (Left f) Right mp
-
-      unknownPackages ps
-          = do putStrLn "\nThe following packages don't seem \
-                        \to have been installed by your package manager:"
-               printList display ps
-
-      unknownFiles fs
-          = do putStrLn "\nThe following files are those corresponding \
-                         \to packages installed by your package manager\n\
-                         \which can't be matched up to the packages that own them."
-               printList id fs
 
 -- -----------------------------------------------------------------------------
 
@@ -216,9 +198,8 @@ libFronts = map BS.pack
 -- -----------------------------------------------------------------------------
 
 -- Finding broken packages in this install of GHC.
-brokenPkgs :: IO [Package]
-brokenPkgs = brokenConfs >>=
-             checkPkgs "Haskell libraries with broken dependencies" "broken"
+brokenPkgs :: IO ([Package],[PackageIdentifier],[FilePath])
+brokenPkgs = brokenConfs >>= checkPkgs
 
 -- .conf files from broken packages of this GHC version
 brokenConfs :: IO ([PackageIdentifier], [FilePath])
