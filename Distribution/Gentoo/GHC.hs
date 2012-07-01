@@ -167,16 +167,13 @@ checkPkgs msg typ (pns,cnfs)
 
 -- Finding packages installed with other versions of GHC
 oldGhcPkgs :: IO [Package]
-oldGhcPkgs = do putStrLn "Searching for packages installed with a \
-                         \different version of GHC."
-                thisGhc <- ghcLibDir
+oldGhcPkgs = do thisGhc <- ghcLibDir
                 let thisGhc' = BS.pack thisGhc
                 -- It would be nice to do this, but we can't assume
                 -- some crazy user hasn't deleted one of these dirs
                 -- libFronts' <- filterM doesDirectoryExist libFronts
                 pkgs <- liftM notGHC
                         $ concatMapM (checkLibDir thisGhc') libFronts
-                pkgListPrint "old" pkgs
                 return pkgs
 
 -- Find packages installed by other versions of GHC in this possible

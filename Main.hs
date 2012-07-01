@@ -79,7 +79,11 @@ data BuildTarget = GhcUpgrade
                    deriving (Eq, Ord, Show, Read)
 
 getPackages              :: BuildTarget -> IO [Package]
-getPackages GhcUpgrade   = oldGhcPkgs
+getPackages GhcUpgrade   =
+    do putStrLn "Searching for packages installed with a different version of GHC."
+       pkgs <- oldGhcPkgs
+       pkgListPrint "old" pkgs
+       return pkgs
 getPackages DepCheck     = brokenPkgs
 getPackages AllInstalled =
     do putStrLn "Finding all libraries installed with the current version of GHC."
