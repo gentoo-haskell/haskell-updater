@@ -14,8 +14,6 @@ module Distribution.Gentoo.GHC
        , oldGhcPkgs
        , brokenPkgs
        , allInstalledPackages
-       , pkgListPrint
-       , printList
        ) where
 
 import Distribution.Gentoo.Util
@@ -89,20 +87,6 @@ confFiles dir = do let gDir = dir </> "gentoo"
                      else return []
   where
     isConf file = takeExtension file == ".conf"
-
--- Print a list of packages, with a description of what they are.
-pkgListPrint :: String -> [Package] -> IO ()
-pkgListPrint desc pkgs
-    = if null pkgs
-      then putStrLn $ unwords ["No", desc, "packages found!\n"]
-      else do putStrLn $ unwords ["Found the following"
-                                 , desc, "packages:"]
-              printList printPkg pkgs
-              putStrLn ""
-
--- Print a bullet list of values with one value per line.
-printList   :: (a -> String) -> [a] -> IO ()
-printList f = mapM_ (putStrLn . (++) "  * " . f)
 
 tryMaybe     :: (a -> Maybe b) -> a -> Either a b
 tryMaybe f a = maybe (Left a) Right $ f a

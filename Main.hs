@@ -28,6 +28,8 @@ import System.IO(hPutStrLn, stderr)
 import Control.Monad(liftM, unless)
 import System.Process(rawSystem)
 
+import Output
+
 -- -----------------------------------------------------------------------------
 -- The overall program.
 
@@ -65,13 +67,18 @@ combineActions a1 a2 = case (a1 `min` a2) of
                          Version -> Version
                          Build{} -> Build $ targets a1 `Set.union` targets a2
 
-runAction               :: RunModifier -> Action -> IO a
-runAction _  Help       = help
-runAction _  Version    = version
-runAction rm (Build ts) = do systemInfo rm
-                             ps <- allGetPackages ts
-                             buildPkgs rm ps
-
+runAction :: RunModifier -> Action -> IO a
+runAction rm action =
+    case action of
+        Help        -> help
+        Version     -> version
+        Build ts    -> do systemInfo v rm
+                          ps <- allGetPackages v ts
+                          if listOnly rm
+                              then mapM_ (putStrLn . printPkg) ps
+                              else buildPkgs rm ps
+                          success v "done!"
+  where v = verbosity rm
 -- -----------------------------------------------------------------------------
 -- The possible things to build.
 
@@ -80,39 +87,39 @@ data BuildTarget = GhcUpgrade
                  | AllInstalled
                    deriving (Eq, Ord, Show, Read)
 
-getPackages              :: BuildTarget -> IO [Package]
-getPackages GhcUpgrade   =
-    do putStrLn "Searching for packages installed with a different version of GHC."
-       pkgs <- oldGhcPkgs
-       pkgListPrint "old" pkgs
-       return pkgs
-getPackages DepCheck     =
-    do putStrLn "Searching for Haskell libraries with broken dependencies."
-       (pkgs, unknown_packages, unknown_files)  <- brokenPkgs
-       printUnknownPackages unknown_packages
-       printUnknownFiles unknown_files
-       pkgListPrint "broken" (notGHC pkgs)
-       return pkgs
+getPackages :: Verbosity -> BuildTarget -> IO [Package]
+getPackages v target =
+    case target of
+        GhcUpgrade -> do say v "Searching for packages installed with a different version of GHC."
+                         pkgs <- oldGhcPkgs
+                         pkgListPrint v "old" pkgs
+                         return pkgs
+
+        AllInstalled -> do say v "Finding all libraries installed with the current version of GHC."
+                           pkgs <- allInstalledPackages
+                           pkgListPrint v "installed" pkgs
+                           return pkgs
+
+        DepCheck   -> do say v  "Searching for Haskell libraries with broken dependencies."
+                         (pkgs, unknown_packages, unknown_files)  <- brokenPkgs
+                         printUnknownPackages unknown_packages
+                         printUnknownFiles unknown_files
+                         pkgListPrint v "broken" (notGHC pkgs)
+                         return pkgs
 
   where printUnknownPackages [] = return ()
         printUnknownPackages ps =
-            do putStrLn "\nThe following packages don't seem to have been installed by your package manager:"
-               printList display ps
+            do say v "\nThe following packages don't seem to have been installed by your package manager:"
+               printList v display ps
         printUnknownFiles [] = return ()
         printUnknownFiles fs =
-            do putStrLn $ "\nThe following files are those corresponding to packages installed by your package manager\n" ++
+            do say v $ "\nThe following files are those corresponding to packages installed by your package manager\n" ++
                           "which can't be matched up to the packages that own them."
-               printList id fs
+               printList v id fs
 
-getPackages AllInstalled =
-    do putStrLn "Finding all libraries installed with the current version of GHC."
-       pkgs <- allInstalledPackages
-       pkgListPrint "installed" pkgs
-       return pkgs
-
-allGetPackages :: Set.Set BuildTarget -> IO [Package]
-allGetPackages = liftM nub
-                   . concatMapM getPackages
+allGetPackages :: Verbosity -> Set.Set BuildTarget -> IO [Package]
+allGetPackages v = liftM nub
+                   . concatMapM (getPackages v)
                    . Set.toList
 
 -- -----------------------------------------------------------------------------
@@ -122,6 +129,8 @@ data RunModifier = RM { pkgmgr   :: PkgManager
                       , flags    :: [PMFlag]
                       , withCmd  :: WithCmd
                       , rawPMArgs :: [String]
+                      , verbosity :: Verbosity
+                      , listOnly :: Bool
                       }
                    deriving (Eq, Ord, Show, Read)
 
@@ -134,7 +143,7 @@ data WithCmd = RunOnly
 runCmd :: WithCmd -> String -> [String] -> IO a
 runCmd mode cmd args = case mode of
         RunOnly     ->                      runCommand cmd args
-        PrintOnly   -> success cmd_line
+        PrintOnly   -> putStrLn cmd_line >> exitWith (ExitSuccess)
         PrintAndRun -> putStrLn cmd_line >> runCommand cmd args
     where cmd_line = unwords (cmd:args)
 
@@ -142,7 +151,7 @@ runCommand     :: String -> [String] -> IO a
 runCommand cmd args = rawSystem cmd args >>= exitWith
 
 buildPkgs       :: RunModifier -> [Package] -> IO a
-buildPkgs _  [] = success "\nNothing to build!"
+buildPkgs rm  [] = success (verbosity rm) "\nNothing to build!"
 buildPkgs rm ps = runCmd (withCmd rm) cmd args
     where
       (cmd, args) = buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
@@ -159,6 +168,8 @@ data Flag = HelpFlag
           | RebuildAll
           | Pretend
           | NoDeep
+          | QuietFlag
+          | ListOnlyFlag
           deriving (Eq, Ord, Show, Read)
 
 parseArgs :: PkgManager -> [String] -> Either String (RunModifier, Action)
@@ -187,6 +198,8 @@ argParser dPM (fls, nonoptions, unrecognized, errs)
                 -- We need to get Flags that represent this as well.
               , withCmd  = PrintAndRun
               , rawPMArgs = nonoptions
+              , verbosity = bool Normal Quiet (hasFlag QuietFlag)
+              , listOnly  = hasFlag ListOnlyFlag
               }
 
 flagToAction             :: Flag -> Either Flag Action
@@ -220,8 +233,12 @@ options =
       "Only pretend to build packages."
     , Option []         ["no-deep"]         (NoArg NoDeep)
       "Don't pull deep dependencies (--deep with emerge)."
+    , Option ['l'] ["list-only"]            (NoArg ListOnlyFlag)
+      "Output only list of packages for rebuild. One package per line."
     , Option ['V']      ["version"]         (NoArg VersionFlag)
       "Version information."
+    , Option ['q']      ["quiet"]           (NoArg QuietFlag)
+      "Print only fatal errors (to stderr)."
     , Option ['h', '?'] ["help"]            (NoArg HelpFlag)
       "Print this help message."
     ]
@@ -236,10 +253,10 @@ options =
 -- Printing information.
 
 help :: IO a
-help = progInfo >>= success
+help = progInfo >>= success Normal
 
 version :: IO a
-version = fmap (++ '-' : showVersion Paths.version) getProgName >>= success
+version = fmap (++ '-' : showVersion Paths.version) getProgName >>= success Normal
 
 progInfo :: IO String
 progInfo = do pName <- getProgName
@@ -255,25 +272,25 @@ progInfo = do pName <- getProgName
                            , ""
                            , "Options:"]
 
-systemInfo    :: RunModifier -> IO ()
-systemInfo rm = do ver    <- ghcVersion
-                   pName  <- getProgName
-                   pLoc   <- ghcLoc
-                   libDir <- ghcLibDir
-                   putStrLn $ "Running " ++ pName ++ " using GHC " ++ ver
-                   putStrLn $ "  * Executable: " ++ pLoc
-                   putStrLn $ "  * Library directory: " ++ libDir
-                   putStrLn $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
-                   unless (null (rawPMArgs rm)) $
-                       putStrLn $ "  * PM auxiliary arguments: " ++ unwords (rawPMArgs rm)
-                   putStrLn ""
+systemInfo :: Verbosity -> RunModifier -> IO ()
+systemInfo v rm = do ver    <- ghcVersion
+                     pName  <- getProgName
+                     pLoc   <- ghcLoc
+                     libDir <- ghcLibDir
+                     say v $ "Running " ++ pName ++ " using GHC " ++ ver
+                     say v $ "  * Executable: " ++ pLoc
+                     say v $ "  * Library directory: " ++ libDir
+                     say v $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
+                     unless (null (rawPMArgs rm)) $
+                         say v $ "  * PM auxiliary arguments: " ++ unwords (rawPMArgs rm)
+                     say v ""
 
 -- -----------------------------------------------------------------------------
 -- Utility functions
 
-success     :: String -> IO a
-success msg = do putStrLn msg
-                 exitWith ExitSuccess
+success :: Verbosity -> String -> IO a
+success v msg = do say v msg
+                   exitWith ExitSuccess
 
 die     :: String -> IO a
 die msg = do putErrLn ("ERROR: " ++ msg)

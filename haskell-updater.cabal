@@ -39,6 +39,7 @@ Executable haskell-updater {
                         Distribution.Gentoo.Packages,
                         Distribution.Gentoo.PkgManager,
                         Distribution.Gentoo.Util,
+                        Output,
                         Paths_haskell_updater
     Ghc-Options:        -Wall
     Ghc-Prof-Options:   -auto-all
