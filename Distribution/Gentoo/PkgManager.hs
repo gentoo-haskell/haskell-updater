@@ -25,8 +25,7 @@ import Data.Char(toLower)
 import Data.Maybe(mapMaybe, fromMaybe)
 import qualified Data.Map as M
 import Data.Map(Map)
-import System.IO.Error(try)
-import System.Environment(getEnv)
+import System.Environment(getEnvironment)
 
 -- -----------------------------------------------------------------------------
 
@@ -43,8 +42,8 @@ data PkgManager = Portage
 --   "portage".  Note that even if that environment variable is
 --   defined, if it is unknown then it won't be used.
 defaultPM :: IO PkgManager
-defaultPM = do eDPM <- try $ getEnv "PACKAGE_MANAGER"
-               let dPM = either (const defaultPMName) id eDPM
+defaultPM = do eDPM <- lookup "PACKAGE_MANAGER" `fmap` getEnvironment
+               let dPM = maybe defaultPMName id eDPM
                    mPM = dPM `M.lookup` pmNameMap
                return $ fromMaybe knownDef mPM
   where
