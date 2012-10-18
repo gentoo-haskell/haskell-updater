@@ -87,9 +87,11 @@ getSlot cp = do ex <- doesFileExist sFile
                   else return Nothing
   where
     sFile = pkgPath cp </> "SLOT"
+    -- EAPI=5 defines subslots
+    split_slot_subslot = break (== '/')
     parse = do fl <- readFile sFile
                -- Don't want the trailing newline
-               return $ listToMaybe $ lines fl
+               return $ listToMaybe $ map (fst . split_slot_subslot) $ lines fl
 
 -- | Remove the version information from the package name.
 stripVersion :: VerPkg -> Pkg
