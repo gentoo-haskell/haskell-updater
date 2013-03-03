@@ -93,7 +93,9 @@ pmCommand (InvalidPM _)  = undefined
 
 defaultPMFlags               :: PkgManager -> [String]
 defaultPMFlags Portage       = [ "--oneshot"
-                               , "--keep-going"]
+                               , "--keep-going"
+                               , "--complete-graph"
+                               ]
 defaultPMFlags PkgCore       = [ "--deep"
                                , "--oneshot"
                                , "--ignore-failures"
