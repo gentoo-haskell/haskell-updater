@@ -221,7 +221,7 @@ options =
       "Check dependencies of Haskell packages."
     , Option ['u']      ["upgrade"]         (NoArg Upgrade)
       "Rebuild Haskell packages after a GHC upgrade."
-    , Option []         ["all"]             (NoArg RebuildAll)
+    , Option ['a']      ["all"]             (NoArg RebuildAll)
       "Rebuild all Haskell libraries built with current GHC."
     , Option ['P']      ["package-manager"] (ReqArg PM "PM")
       $ "Use package manager PM, where PM can be one of:\n"
