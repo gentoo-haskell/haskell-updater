@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {- |
    Module      : Distribution.Gentoo.GHC
    Description : Find GHC-related breakages on Gentoo.
@@ -47,7 +48,15 @@ rawSysStdOutLine     :: FilePath -> [String] -> IO String
 rawSysStdOutLine app = liftM (head . lines) . rawCommand app
 
 rawCommand          :: FilePath -> [String] -> IO String
-rawCommand cmd args = do (out,_,_) <- rawSystemStdInOut silent cmd args Nothing False
+rawCommand cmd args = do (out,_,_) <- rawSystemStdInOut silent  -- verbosity
+                                                        cmd     -- program loc
+                                                        args    -- args
+#if MIN_VERSION_Cabal(1,18,0)
+                                                        Nothing -- cabal-1.18+: new working dir
+                                                        Nothing -- cabal-1.18+: new environment
+#endif /* MIN_VERSION_Cabal(1,18,0) */
+                                                        Nothing -- input text and binary mode
+                                                        False   -- is output in binary mode
                          return out
 
 -- Get the first line of output from calling GHC with the given
