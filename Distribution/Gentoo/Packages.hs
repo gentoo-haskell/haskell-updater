@@ -156,14 +156,14 @@ parseContents cp = do ex <- doesFileExist cFile
     cFile = pkgPath cp </> "CONTENTS"
 
     parse = do lns <- liftM BS.lines $ BS.readFile cFile
-               return $ mapMaybe (parseCLine .BS.words) lns
+               return $ mapMaybe (parseCLine . BS.words) lns
 
     -- Use unwords of list rather than taking next element because of
     -- how spaces are represented in file names.
     -- This might cause a problem if there is more than a single
     -- space (or a tab) in the filename...
     -- Also require at least 3 words in case of an object, as the CONTENTS
-    -- file can be corrept (fixes an actual problem).
+    -- file can be corrupt (fixes actual problem reported by user).
     parseCLine :: [ByteString] -> Maybe Content
     parseCLine (tp:ln)
       | tp == dir = Just . Dir . BS.unwords $ ln
