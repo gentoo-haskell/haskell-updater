@@ -115,7 +115,7 @@ readConf = ghcLibDir >>= confFiles >>= foldM addConf Map.empty
 
 -- Add this .conf file to the Map
 addConf          :: ConfMap -> FilePath -> IO ConfMap
-addConf cmp conf = do cnts <- readFile conf
+addConf cmp conf = do cnts <- BS.unpack `fmap` BS.readFile conf
                       case (reads cnts) of
                         []       -> return cmp
                         -- ebuilds that have CABAL_CORE_LIB_GHC_PV set

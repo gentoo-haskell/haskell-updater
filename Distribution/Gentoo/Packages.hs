@@ -89,7 +89,7 @@ getSlot cp = do ex <- doesFileExist sFile
     sFile = pkgPath cp </> "SLOT"
     -- EAPI=5 defines subslots
     split_slot_subslot = break (== '/')
-    parse = do fl <- readFile sFile
+    parse = do fl <- BS.unpack `fmap` BS.readFile sFile
                -- Don't want the trailing newline
                return $ listToMaybe $ map (fst . split_slot_subslot) $ lines fl
 

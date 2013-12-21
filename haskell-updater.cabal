@@ -43,7 +43,7 @@ Executable haskell-updater {
                         Output,
                         Paths_haskell_updater
     Ghc-Options:        -Wall
-    Ghc-Prof-Options:   -auto-all
+    Ghc-Prof-Options:   -auto-all -caf-all -rtsopts
 
     Build-Depends:      base == 4.*,
                         Cabal >= 1.8 && < 1.19,
