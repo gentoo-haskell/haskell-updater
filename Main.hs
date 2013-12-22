@@ -91,7 +91,7 @@ getPackages :: Verbosity -> BuildTarget -> IO [Package]
 getPackages v target =
     case target of
         GhcUpgrade -> do say v "Searching for packages installed with a different version of GHC."
-                         pkgs <- oldGhcPkgs
+                         pkgs <- oldGhcPkgs v
                          pkgListPrint v "old" pkgs
                          return pkgs
 
@@ -169,6 +169,7 @@ data Flag = HelpFlag
           | Pretend
           | NoDeep
           | QuietFlag
+          | VerboseFlag
           | ListOnlyFlag
           deriving (Eq, Ord, Show, Read)
 
@@ -199,7 +200,10 @@ argParser dPM (fls, nonoptions, unrecognized, errs)
                 -- We need to get Flags that represent this as well.
               , withCmd  = PrintAndRun
               , rawPMArgs = nonoptions
-              , verbosity = bool Normal Quiet (hasFlag QuietFlag)
+              , verbosity = case () of
+                                _ | hasFlag VerboseFlag -> Verbose
+                                _ | hasFlag QuietFlag   -> Quiet
+                                _                       -> Normal
               , listOnly  = hasFlag ListOnlyFlag
               }
 
@@ -240,6 +244,8 @@ options =
       "Version information."
     , Option ['q']      ["quiet"]           (NoArg QuietFlag)
       "Print only fatal errors (to stderr)."
+    , Option ['v']      ["verbose"]         (NoArg VerboseFlag)
+      "Be more elaborate (to stderr)."
     , Option ['h', '?'] ["help"]            (NoArg HelpFlag)
       "Print this help message."
     ]

@@ -9,6 +9,7 @@ module Output (
                 pkgListPrint
               , printList
               , say
+              , vsay
               , Verbosity(..)
               ) where
 
@@ -17,13 +18,24 @@ import System.IO (hPutStrLn, stderr)
 import Distribution.Gentoo.Packages
 
 -- output mode (chattiness)
-data Verbosity = Normal
-               | Quiet
+data Verbosity = Quiet
+               | Normal
+               | Verbose
      deriving (Eq, Ord, Show, Read)
 
 say :: Verbosity -> String -> IO ()
-say Normal msg = hPutStrLn stderr msg
-say Quiet _msg = return ()
+say verb_l msg =
+    case verb_l of
+        Quiet   -> return ()
+        Normal  -> hPutStrLn stderr msg
+        Verbose -> hPutStrLn stderr msg
+
+vsay :: Verbosity -> String -> IO ()
+vsay verb_l msg =
+    case verb_l of
+        Quiet   -> return ()
+        Normal  -> return ()
+        Verbose -> hPutStrLn stderr msg
 
 -- Print a bullet list of values with one value per line.
 printList :: Verbosity -> (a -> String) -> [a] -> IO ()

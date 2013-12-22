@@ -39,6 +39,9 @@ import System.Directory( canonicalizePath
                        , doesDirectoryExist
                        , findExecutable)
 import Control.Monad(foldM, liftM)
+
+import Output
+
 -- -----------------------------------------------------------------------------
 
 -- Common helper utils, etc.
@@ -141,20 +144,24 @@ checkPkgs (pns,cnfs)
 -- -----------------------------------------------------------------------------
 
 -- Finding packages installed with other versions of GHC
-oldGhcPkgs :: IO [Package]
-oldGhcPkgs = do thisGhc <- ghcLibDir
-                let thisGhc' = BS.pack thisGhc
-                -- It would be nice to do this, but we can't assume
-                -- some crazy user hasn't deleted one of these dirs
-                -- libFronts' <- filterM doesDirectoryExist libFronts
-                pkgs <- liftM notGHC
-                        $ concatMapM (checkLibDir thisGhc') libFronts
-                return pkgs
+oldGhcPkgs :: Verbosity -> IO [Package]
+oldGhcPkgs v =
+    do thisGhc <- ghcLibDir
+       vsay v $ "oldGhcPkgs ghc lib: " ++ show thisGhc
+       let thisGhc' = BS.pack thisGhc
+       -- It would be nice to do this, but we can't assume
+       -- some crazy user hasn't deleted one of these dirs
+       -- libFronts' <- filterM doesDirectoryExist libFronts
+       pkgs <- liftM notGHC
+               $ concatMapM (checkLibDir v thisGhc') libFronts
+       return pkgs
 
 -- Find packages installed by other versions of GHC in this possible
 -- library directory.
-checkLibDir                :: BSFilePath -> BSFilePath -> IO [Package]
-checkLibDir thisGhc libDir = pkgsHaveContent (hasDirMatching wanted)
+checkLibDir :: Verbosity -> BSFilePath -> BSFilePath -> IO [Package]
+checkLibDir v thisGhc libDir =
+    do vsay v $ "checkLibDir ghc lib: " ++ show (thisGhc, libDir)
+       pkgsHaveContent (hasDirMatching wanted)
   where
     wanted dir = isValid dir && (not . isInvalid) dir
 
