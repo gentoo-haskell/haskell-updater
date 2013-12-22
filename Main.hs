@@ -100,8 +100,8 @@ getPackages v target =
                            pkgListPrint v "installed" pkgs
                            return pkgs
 
-        DepCheck   -> do say v  "Searching for Haskell libraries with broken dependencies."
-                         (pkgs, unknown_packages, unknown_files)  <- brokenPkgs
+        DepCheck   -> do say v "Searching for Haskell libraries with broken dependencies."
+                         (pkgs, unknown_packages, unknown_files) <- brokenPkgs v
                          printUnknownPackages unknown_packages
                          printUnknownFiles unknown_files
                          pkgListPrint v "broken" (notGHC pkgs)

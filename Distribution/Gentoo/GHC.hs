@@ -132,13 +132,16 @@ addConf cmp conf = do cnts <- BS.unpack `fmap` BS.readFile conf
     cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
     cfNm = packageId . head . fst . head
 
-checkPkgs :: ([PackageIdentifier], [FilePath])
+checkPkgs :: Verbosity
+             -> ([PackageIdentifier], [FilePath])
              -> IO ([Package],[PackageIdentifier],[FilePath])
-checkPkgs (pns,cnfs)
+checkPkgs v (pns,cnfs)
   = do (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
        return (pkgs, pns, nI)
     where
-      hasFile' f = do mp <- hasFile f
+      hasFile' f = do vsay v $ "checkPkgs: resolving " ++ f
+                      mp <- hasFile f
+                      vsay v $ "checkPkgs: resolved " ++ f ++ " to " ++ show mp
                       return $ maybe (Left f) Right mp
 
 -- -----------------------------------------------------------------------------
@@ -198,19 +201,23 @@ libFronts = map BS.pack
 -- -----------------------------------------------------------------------------
 
 -- Finding broken packages in this install of GHC.
-brokenPkgs :: IO ([Package],[PackageIdentifier],[FilePath])
-brokenPkgs = brokenConfs >>= checkPkgs
+brokenPkgs :: Verbosity -> IO ([Package],[PackageIdentifier],[FilePath])
+brokenPkgs v = brokenConfs v >>= checkPkgs v
 
 -- .conf files from broken packages of this GHC version
-brokenConfs :: IO ([PackageIdentifier], [FilePath])
-brokenConfs = do brkn <- getBroken
-                 -- Check if we actually have to go look up files and
-                 -- do IO.
-                 if null brkn
-                   then return ([], [])
-                   else do cnfs <- readConf
-                           return $ partitionEithers
-                                      $ map (matchConf cnfs) brkn
+brokenConfs :: Verbosity -> IO ([PackageIdentifier], [FilePath])
+brokenConfs v =
+    do vsay v "brokenConfs: getting broken output from 'ghc-pkg'"
+       brkn <- getBroken
+       -- Check if we actually have to go look up files and
+       -- do IO.
+       vsay v $ "brokenConfs: resolving package names to gentoo equivalents. " ++ show (length brkn) ++ " are broken"
+       if null brkn
+           then return ([], [])
+           else do vsay v "brokenConfs: reading '*.conf' files"
+                   cnfs <- readConf
+                   vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
+                   return $ partitionEithers $ map (matchConf cnfs) brkn
 
 -- Return the closure of all packages affected by breakage
 getBroken :: IO [PackageIdentifier]
