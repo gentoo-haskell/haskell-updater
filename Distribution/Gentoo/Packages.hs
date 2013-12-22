@@ -12,7 +12,7 @@ module Distribution.Gentoo.Packages
        , Content
        , notGHC
        , printPkg
-       , hasFile
+       , haveFiles
        , pkgsHaveContent
        , hasContentMatching
        , hasDirMatching
@@ -179,13 +179,12 @@ parseContents cp = do ex <- doesFileExist cFile
 
 -- -----------------------------------------------------------------------------
 
--- Find the package (if any) that contain this file.
--- Assumes collision protection (i.e. at most one package per file).
-hasFile    :: FilePath -> IO (Maybe Package)
-hasFile fp = liftM listToMaybe $ pkgsHaveContent p
+-- Find the packages that contain given files.
+haveFiles :: [FilePath] -> IO [Package]
+haveFiles fps = pkgsHaveContent p
   where
-    fp' = BS.pack fp
-    p = hasObjMatching ((==) fp')
+    fps' = map BS.pack fps
+    p cont = any (\bfp -> hasObjMatching ((==) bfp) cont) fps'
 
 -- Find which packages have Content information that matches the
 -- provided predicate; to be used with the searching predicates

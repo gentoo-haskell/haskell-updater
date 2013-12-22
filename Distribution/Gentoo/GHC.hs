@@ -136,13 +136,8 @@ checkPkgs :: Verbosity
              -> ([PackageIdentifier], [FilePath])
              -> IO ([Package],[PackageIdentifier],[FilePath])
 checkPkgs v (pns,cnfs)
-  = do (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
-       return (pkgs, pns, nI)
-    where
-      hasFile' f = do vsay v $ "checkPkgs: resolving " ++ f
-                      mp <- hasFile f
-                      vsay v $ "checkPkgs: resolved " ++ f ++ " to " ++ show mp
-                      return $ maybe (Left f) Right mp
+  = do pkgs <- haveFiles cnfs
+       return (pkgs, pns, [])
 
 -- -----------------------------------------------------------------------------
 
