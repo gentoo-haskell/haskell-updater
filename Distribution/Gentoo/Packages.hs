@@ -57,12 +57,9 @@ samePackageAs (Package c1 p1 _) (Package c2 p2 _)
 ghcPkg :: Package
 ghcPkg = Package "dev-lang" "ghc" Nothing
 
-ghcBinPkg :: Package
-ghcBinPkg = Package "dev-lang" "ghc-bin" Nothing
-
 -- Return all packages that are not a version of GHC.
 notGHC :: [Package] -> [Package]
-notGHC = filter (\p -> isNot ghcPkg p && isNot ghcBinPkg p)
+notGHC = filter (\p -> isNot ghcPkg p)
   where
     isNot p1 = not . samePackageAs p1
 
