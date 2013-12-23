@@ -151,19 +151,19 @@ oldGhcPkgs v =
        -- some crazy user hasn't deleted one of these dirs
        -- libFronts' <- filterM doesDirectoryExist libFronts
        pkgs <- liftM notGHC
-               $ concatMapM (checkLibDir v thisGhc') libFronts
+               $ checkLibDirs v thisGhc' libFronts
        return pkgs
 
 -- Find packages installed by other versions of GHC in this possible
 -- library directory.
-checkLibDir :: Verbosity -> BSFilePath -> BSFilePath -> IO [Package]
-checkLibDir v thisGhc libDir =
-    do vsay v $ "checkLibDir ghc lib: " ++ show (thisGhc, libDir)
+checkLibDirs :: Verbosity -> BSFilePath -> [BSFilePath] -> IO [Package]
+checkLibDirs v thisGhc libDirs =
+    do vsay v $ "checkLibDir ghc libs: " ++ show (thisGhc, libDirs)
        pkgsHaveContent (hasDirMatching wanted)
   where
     wanted dir = isValid dir && (not . isInvalid) dir
 
-    isValid = isGhcLibDir libDir
+    isValid dir = any (\ldir -> isGhcLibDir ldir dir) libDirs
 
     -- Invalid if it's this GHC
     isInvalid fp = fp == thisGhc || BS.isPrefixOf (thisGhc `BS.snoc` pathSeparator) fp
