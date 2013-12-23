@@ -144,4 +144,4 @@ cavePMFlag                :: PMFlag -> Maybe String
 cavePMFlag PretendBuild   = Just "--no-execute"
 cavePMFlag UpdateDeep     = Just "--complete"
 cavePMFlag UpdateAsNeeded = Just "--lazy"
-cavePMFlag PMQuiet        = Just "--quiet"
+cavePMFlag PMQuiet        = Nothing -- Just "--quiet"

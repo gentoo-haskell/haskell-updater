@@ -13,10 +13,12 @@ module Distribution.Gentoo.Packages
        , notGHC
        , printPkg
        , hasFile
+       , hasFile1
        , pkgsHaveContent
        , hasContentMatching
        , hasDirMatching
        , hasObjMatching
+       , loadDb
        ) where
 
 import Distribution.Gentoo.Util
@@ -29,7 +31,8 @@ import Data.ByteString.Char8(ByteString)
 import System.Directory( doesDirectoryExist
                        , doesFileExist)
 import System.FilePath((</>))
-import Control.Monad(filterM, liftM)
+import System.IO.Unsafe (unsafeInterleaveIO)
+import Control.Monad(filterM, liftM, liftM2)
 
 -- -----------------------------------------------------------------------------
 
@@ -186,6 +189,32 @@ hasFile fp = liftM listToMaybe $ pkgsHaveContent p
   where
     fp' = BS.pack fp
     p = hasObjMatching ((==) fp')
+
+-- | "hasFile" that works on lazy DB.
+hasFile1 :: FilePath -> [(Package, [Content])] -> Maybe Package
+hasFile1 fp pkgs  = fmap fst $ listToMaybe $ filter (hasObj . snd) pkgs
+  where
+    fp' = BS.pack fp
+    hasObj [] = False
+    hasObj (Obj f:xs)
+      | f == fp' = True
+      | otherwise = hasObj xs
+    hasObj (_:xs) = hasObj xs
+
+-- | Lazily load db of files.
+loadDb :: IO [(Package, [Content])]
+loadDb = installedCats' >>= go []
+  where
+    go :: [VCatPkg] -> [String] -> IO [(Package, [Content])]
+    go [] []     = return []
+    go [] (c:cs) = do
+        inDir <- getDirectoryContents' (pkgDBDir </> c)
+        pkgs <- filterM (doesDirectoryExist . pkgPath) (map ((,) c) inDir)
+        go pkgs cs
+    go (p:pkgs) cs = do
+        p'  <- liftM2 (,) (toPackage p) (parseContents p)
+        ps' <- unsafeInterleaveIO $ go pkgs cs
+        return $ p':ps'
 
 -- Find which packages have Content information that matches the
 -- provided predicate; to be used with the searching predicates

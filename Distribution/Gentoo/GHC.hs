@@ -132,17 +132,14 @@ addConf cmp conf = do cnts <- BS.unpack `fmap` BS.readFile conf
     cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
     cfNm = packageId . head . fst . head
 
-checkPkgs :: Verbosity
-             -> ([PackageIdentifier], [FilePath])
+checkPkgs :: ([PackageIdentifier], [FilePath])
              -> IO ([Package],[PackageIdentifier],[FilePath])
-checkPkgs v (pns,cnfs)
-  = do (nI, pkgs) <- liftM partitionEithers $ mapM hasFile' cnfs
+checkPkgs (pns,cnfs)
+  = do db <- loadDb
+       let (nI, pkgs) = partitionEithers $ map (hasFile' db) cnfs
        return (pkgs, pns, nI)
     where
-      hasFile' f = do vsay v $ "checkPkgs: resolving " ++ f
-                      mp <- hasFile f
-                      vsay v $ "checkPkgs: resolved " ++ f ++ " to " ++ show mp
-                      return $ maybe (Left f) Right mp
+      hasFile' pkgs f = maybe (Left f) Right (hasFile1 f pkgs)
 
 -- -----------------------------------------------------------------------------
 
@@ -202,7 +199,7 @@ libFronts = map BS.pack
 
 -- Finding broken packages in this install of GHC.
 brokenPkgs :: Verbosity -> IO ([Package],[PackageIdentifier],[FilePath])
-brokenPkgs v = brokenConfs v >>= checkPkgs v
+brokenPkgs v = brokenConfs v >>= checkPkgs
 
 -- .conf files from broken packages of this GHC version
 brokenConfs :: Verbosity -> IO ([PackageIdentifier], [FilePath])
