@@ -26,6 +26,7 @@ import Data.List(delete)
 import Data.Maybe(mapMaybe, listToMaybe)
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8(ByteString)
+import qualified Data.Set as S
 import System.Directory( doesDirectoryExist
                        , doesFileExist)
 import System.FilePath((</>))
@@ -179,12 +180,12 @@ parseContents cp = do ex <- doesFileExist cFile
 
 -- -----------------------------------------------------------------------------
 
--- Find the packages that contain given files.
+-- Find all the packages that contain any of the given files.
 haveFiles :: [FilePath] -> IO [Package]
 haveFiles fps = pkgsHaveContent p
   where
-    fps' = map BS.pack fps
-    p cont = any (\bfp -> hasObjMatching ((==) bfp) cont) fps'
+    fps' = S.fromList $ map BS.pack fps
+    p = hasObjMatching (\fp -> S.member fp fps')
 
 -- Find which packages have Content information that matches the
 -- provided predicate; to be used with the searching predicates
