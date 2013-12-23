@@ -169,14 +169,13 @@ checkLibDir v thisGhc libDir =
     isInvalid fp = fp == thisGhc || BS.isPrefixOf (thisGhc `BS.snoc` pathSeparator) fp
 
 -- A valid GHC library directory starting at libdir has a name of
--- either "ghc" or "ghc-bin", then a hyphen and then a version number.
-isGhcLibDir            :: BSFilePath -> BSFilePath -> Bool
-isGhcLibDir libdir dir = go ghcDirName || go ghcBinDirName
+-- "ghc", then a hyphen and then a version number.
+isGhcLibDir :: BSFilePath -> BSFilePath -> Bool
+isGhcLibDir libdir dir = go ghcDirName
   where
     -- This is hacky because FilePath doesn't work on Bytestrings...
     libdir' = BS.snoc libdir pathSeparator
     ghcDirName = BS.pack "ghc"
-    ghcBinDirName = BS.pack "ghc-bin"
 
     go dn = BS.isPrefixOf ghcDir dir
             -- Any possible version starts with a digit
@@ -189,9 +188,8 @@ isGhcLibDir libdir dir = go ghcDirName || go ghcBinDirName
 -- The possible places GHC could have installed lib directories
 libFronts :: [BSFilePath]
 libFronts = map BS.pack
-            $ do loc <- ["usr", "opt" </> "ghc"]
-                 lib <- ["lib", "lib64"]
-                 return $ "/" </> loc </> lib
+            $ do lib <- ["lib", "lib64"]
+                 return $ "/" </> "usr" </> lib
 
 -- -----------------------------------------------------------------------------
 
