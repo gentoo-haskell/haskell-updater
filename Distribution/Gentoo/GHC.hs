@@ -135,7 +135,7 @@ addConf cmp conf = do cnts <- BS.unpack `fmap` BS.readFile conf
 checkPkgs :: Verbosity
              -> ([PackageIdentifier], [FilePath])
              -> IO ([Package],[PackageIdentifier],[FilePath])
-checkPkgs v (pns,cnfs)
+checkPkgs _v (pns,cnfs)
   = do pkgs <- haveFiles cnfs
        return (pkgs, pns, [])
 
