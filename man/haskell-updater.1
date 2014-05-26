@@ -1,0 +1,69 @@
+.TH HASKELL-UPDATER "1" "May 2014" "haskell-updater-1.2.1" "User Commands"
+.SH NAME
+haskell-updater \- Version 1.2.1
+.SH SYNOPSIS
+.B haskell-updater
+[\fIOptions \fR[\fI-- \fR[\fIPM options\fR]]
+.SH DESCRIPTION
+.SS "haskell-updater \fB\-\-\fR Find and rebuild packages broken due to either:"
+.IP
+\(bu GHC upgrade
+.IP
+\(bu Haskell dependency upgrade
+.TP
+Default action is to do both.
+.SH OPTIONS
+
+.TP
+\fB\-c\fR          \fB\-\-dep\-check\fR
+Check dependencies of Haskell packages.
+.TP
+\fB\-u\fR          \fB\-\-upgrade\fR
+Rebuild Haskell packages after a GHC upgrade.
+.TP
+\fB\-a\fR          \fB\-\-all\fR
+Rebuild all Haskell libraries built with current GHC.
+.TP
+\fB\-P\fR PM       \fB\-\-package\-manager\fR=\fIPM\fR
+Use package manager PM, where PM can be one of:
+* paludis
+* pkgcore
+* portage
+.IP
+The last valid value of PM specified is chosen.
+The default package manager is: portage,
+which can be overriden with the "PACKAGE_MANAGER"
+environment variable.
+.TP
+\fB\-C\fR command  \fB\-\-custom\-pm\fR=\fIcommand\fR
+Use custom command as package manager;
+ignores the \fB\-\-pretend\fR and \fB\-\-no\-deep\fR flags.
+.TP
+\fB\-p\fR          \fB\-\-pretend\fR
+Only pretend to build packages.
+.TP
+\fB\-\-no\-deep\fR
+Don't pull deep dependencies (\fB\-\-deep\fR with emerge).
+.TP
+\fB\-l\fR          \fB\-\-list\-only\fR
+Output only list of packages for rebuild. One package per line.
+.TP
+\fB\-V\fR          \fB\-\-version\fR
+Version information.
+.TP
+\fB\-q\fR          \fB\-\-quiet\fR
+Print only fatal errors (to stderr).
+.TP
+\fB\-v\fR          \fB\-\-verbose\fR
+Be more elaborate (to stderr).
+.TP
+\fB\-h\fR, \-?      \fB\-\-help\fR
+Print this help message.
+.SH EXAMPLES
+\(bu Look for broken packages and rebuild them:
+.IP
+    $> haskell-updater
+.TP
+\(bu Rebuild all packages:
+.IP
+    $> haskell-updater --all
