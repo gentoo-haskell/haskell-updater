@@ -59,7 +59,7 @@ ghcPkg = Package "dev-lang" "ghc" Nothing
 
 -- Return all packages that are not a version of GHC.
 notGHC :: [Package] -> [Package]
-notGHC = filter (\p -> isNot ghcPkg p)
+notGHC = filter (isNot ghcPkg)
   where
     isNot p1 = not . samePackageAs p1
 
@@ -182,7 +182,7 @@ haveFiles :: [FilePath] -> IO [Package]
 haveFiles fps = pkgsHaveContent p
   where
     fps' = S.fromList $ map BS.pack fps
-    p = hasObjMatching (\fp -> S.member fp fps')
+    p = hasObjMatching (`S.member` fps')
 
 -- Find which packages have Content information that matches the
 -- provided predicate; to be used with the searching predicates

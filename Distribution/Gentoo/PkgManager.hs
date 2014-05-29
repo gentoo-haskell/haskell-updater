@@ -43,7 +43,7 @@ data PkgManager = Portage
 --   defined, if it is unknown then it won't be used.
 defaultPM :: IO PkgManager
 defaultPM = do eDPM <- lookup "PACKAGE_MANAGER" `fmap` getEnvironment
-               let dPM = maybe defaultPMName id eDPM
+               let dPM = fromMaybe defaultPMName eDPM
                    mPM = dPM `M.lookup` pmNameMap
                return $ fromMaybe knownDef mPM
   where
@@ -77,7 +77,7 @@ nameOfPM pm                 = pmNameMap' M.! pm
 -- | Choose the appropriate PM from the textual representation; throws
 --   an error if that PM isn't known.
 choosePM    :: String -> PkgManager
-choosePM pm = maybe (InvalidPM pm) id $ pm' `M.lookup` pmNameMap
+choosePM pm = fromMaybe (InvalidPM pm) $ pm' `M.lookup` pmNameMap
     where
       pm' = map toLower pm
 

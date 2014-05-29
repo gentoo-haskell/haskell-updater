@@ -23,7 +23,7 @@ import qualified Data.Set as Set
 import qualified Paths_haskell_updater as Paths(version)
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
-import System.Exit(ExitCode(..), exitWith)
+import System.Exit(ExitCode(..), exitSuccess, exitWith)
 import System.IO(hPutStrLn, stderr)
 import Control.Monad(liftM, unless)
 import System.Process(rawSystem)
@@ -62,7 +62,7 @@ combineAllActions = emptyElse defaultAction (foldl1' combineActions)
 -- Note that it's safe (at the moment at least) to assume that when
 -- the lower of one is a Build that they're both build.
 combineActions       :: Action -> Action -> Action
-combineActions a1 a2 = case (a1 `min` a2) of
+combineActions a1 a2 = case a1 `min` a2 of
                          Help    -> Help
                          Version -> Version
                          Build{} -> Build $ targets a1 `Set.union` targets a2
@@ -143,7 +143,7 @@ data WithCmd = RunOnly
 runCmd :: WithCmd -> String -> [String] -> IO a
 runCmd mode cmd args = case mode of
         RunOnly     ->                      runCommand cmd args
-        PrintOnly   -> putStrLn cmd_line >> exitWith (ExitSuccess)
+        PrintOnly   -> putStrLn cmd_line >> exitSuccess
         PrintAndRun -> putStrLn cmd_line >> runCommand cmd args
     where cmd_line = unwords (cmd:args)
 
@@ -250,7 +250,7 @@ options =
       "Print this help message."
     ]
     where
-      pmList = unlines . map ((++) "  * ") $ definedPMs
+      pmList = unlines . map (" * " ++) $ definedPMs
       defPM = "The last valid value of PM specified is chosen.\n\
               \The default package manager is: " ++ defaultPMName ++ ",\n\
               \which can be overriden with the \"PACKAGE_MANAGER\"\n\
@@ -297,7 +297,7 @@ systemInfo v rm = do ver    <- ghcVersion
 
 success :: Verbosity -> String -> IO a
 success v msg = do say v msg
-                   exitWith ExitSuccess
+                   exitSuccess
 
 die     :: String -> IO a
 die msg = do putErrLn ("ERROR: " ++ msg)

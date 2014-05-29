@@ -119,7 +119,7 @@ readConf = ghcLibDir >>= confFiles >>= foldM addConf Map.empty
 -- Add this .conf file to the Map
 addConf          :: ConfMap -> FilePath -> IO ConfMap
 addConf cmp conf = do cnts <- BS.unpack `fmap` BS.readFile conf
-                      case (reads cnts) of
+                      case reads cnts of
                         []       -> return cmp
                         -- ebuilds that have CABAL_CORE_LIB_GHC_PV set
                         -- for this version of GHC will have a .conf
@@ -150,9 +150,7 @@ oldGhcPkgs v =
        -- It would be nice to do this, but we can't assume
        -- some crazy user hasn't deleted one of these dirs
        -- libFronts' <- filterM doesDirectoryExist libFronts
-       pkgs <- liftM notGHC
-               $ checkLibDirs v thisGhc' libFronts
-       return pkgs
+       liftM notGHC $ checkLibDirs v thisGhc' libFronts
 
 -- Find packages installed by other versions of GHC in this possible
 -- library directory.
@@ -163,7 +161,7 @@ checkLibDirs v thisGhc libDirs =
   where
     wanted dir = isValid dir && (not . isInvalid) dir
 
-    isValid dir = any (\ldir -> isGhcLibDir ldir dir) libDirs
+    isValid dir = any (`isGhcLibDir` dir) libDirs
 
     -- Invalid if it's this GHC
     isInvalid fp = fp == thisGhc || BS.isPrefixOf (thisGhc `BS.snoc` pathSeparator) fp
@@ -222,6 +220,5 @@ getBroken = liftM (mapMaybe simpleParse . words)
 allInstalledPackages :: IO [Package]
 allInstalledPackages = do libDir <- ghcLibDir
                           let libDir' = BS.pack libDir
-                          pkgs <- liftM notGHC
-                                  $ pkgsHaveContent $ hasDirMatching (==libDir')
-                          return pkgs
+                          liftM notGHC $ pkgsHaveContent
+                                       $ hasDirMatching (==libDir')
