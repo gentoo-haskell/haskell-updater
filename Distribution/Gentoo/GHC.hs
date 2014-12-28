@@ -25,12 +25,12 @@ import Distribution.Simple.Utils(rawSystemStdInOut)
 import Distribution.Verbosity(silent)
 import Distribution.Package(PackageIdentifier, packageId)
 import Distribution.InstalledPackageInfo(InstalledPackageInfo_)
-import Distribution.Text(simpleParse)
+import Distribution.Text(display)
 
 -- Other imports
 import Data.Char(isDigit)
 import Data.Either(partitionEithers)
-import Data.Maybe(fromJust, mapMaybe)
+import Data.Maybe(fromJust)
 import qualified Data.Map as Map
 import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
@@ -103,38 +103,66 @@ confFiles dir = do let gDir = dir </> "gentoo"
 tryMaybe     :: (a -> Maybe b) -> a -> Either a b
 tryMaybe f a = maybe (Left a) Right $ f a
 
-
-type ConfMap = Map PackageIdentifier FilePath
+type CabalPV = String -- serialized 'PackageIdentifier'
+type ConfMap = Map CabalPV FilePath
 
 -- Attempt to match the provided broken package to one of the
 -- installed packages.
-matchConf :: ConfMap -> PackageIdentifier -> Either PackageIdentifier FilePath
+matchConf :: ConfMap -> CabalPV -> Either CabalPV FilePath
 matchConf = tryMaybe . flip Map.lookup
 
 -- Read in all Gentoo .conf files from the current GHC version and
 -- create a Map
-readConf :: IO ConfMap
-readConf = ghcLibDir >>= confFiles >>= foldM addConf Map.empty
+readConf :: Verbosity -> IO ConfMap
+readConf v = ghcLibDir >>= confFiles >>= foldM (addConf v) Map.empty
 
--- Add this .conf file to the Map
-addConf          :: ConfMap -> FilePath -> IO ConfMap
-addConf cmp conf = do cnts <- BS.unpack `fmap` BS.readFile conf
-                      case reads cnts of
-                        []       -> return cmp
-                        -- ebuilds that have CABAL_CORE_LIB_GHC_PV set
-                        -- for this version of GHC will have a .conf
-                        -- file containing just []
-                        [([],_)] -> return cmp
-                        rd       -> do let nm = cfNm rd
-                                       return $ Map.insert nm conf cmp
+-- cabal package text format
+-- "[InstalledPackageInfo {installedPackageId = Insta..."
+parse_as_cabal_package :: String -> Maybe CabalPV
+parse_as_cabal_package cont =
+    case reads cont of
+        []       -> Nothing
+        -- ebuilds that have CABAL_CORE_LIB_GHC_PV set
+        -- for this version of GHC will have a .conf
+        -- file containing just []
+        [([],_)] -> Nothing
+        rd       -> Just $ display $ cfNm rd
   where
     -- It's not InstalledPackageInfo, as it can't read the modules
     cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
     cfNm = packageId . head . fst . head
 
+-- ghc package text format
+-- "name: zlib-conduit\n
+--  version: 1.1.0\n
+--  id: zlib-condui..."
+parse_as_ghc_package :: BS.ByteString -> Maybe CabalPV
+parse_as_ghc_package cont =
+    case (map BS.words . BS.lines) cont of
+        ( [name_key, bn] : [ver_key, bv] : _)
+            | name_key == BS.pack "name:" && ver_key == BS.pack "version:"
+            -> Just $ BS.unpack bn ++ "-" ++ BS.unpack bv
+        _   -> Nothing
+
+-- Add this .conf file to the Map
+addConf :: Verbosity -> ConfMap -> FilePath -> IO ConfMap
+addConf v cmp conf = do
+    cont <- BS.readFile conf
+    case ( parse_as_ghc_package cont
+         , parse_as_cabal_package (BS.unpack cont)
+         ) of
+        (Just dn, _) -> return $ Map.insert dn conf cmp
+        (_, Just dn) -> return $ Map.insert dn conf cmp
+        _            -> do say v $ unwords [ "failed to parse "
+                                           , show conf
+                                           , ":"
+                                           , show (BS.take 30 cont)
+                                           ]
+                           return $ cmp
+
 checkPkgs :: Verbosity
-             -> ([PackageIdentifier], [FilePath])
-             -> IO ([Package],[PackageIdentifier],[FilePath])
+             -> ([CabalPV], [FilePath])
+             -> IO ([Package],[CabalPV],[FilePath])
 checkPkgs _v (pns,cnfs)
   = do pkgs <- haveFiles cnfs
        return (pkgs, pns, [])
@@ -192,11 +220,11 @@ libFronts = map BS.pack
 -- -----------------------------------------------------------------------------
 
 -- Finding broken packages in this install of GHC.
-brokenPkgs :: Verbosity -> IO ([Package],[PackageIdentifier],[FilePath])
+brokenPkgs :: Verbosity -> IO ([Package],[CabalPV],[FilePath])
 brokenPkgs v = brokenConfs v >>= checkPkgs v
 
 -- .conf files from broken packages of this GHC version
-brokenConfs :: Verbosity -> IO ([PackageIdentifier], [FilePath])
+brokenConfs :: Verbosity -> IO ([CabalPV], [FilePath])
 brokenConfs v =
     do vsay v "brokenConfs: getting broken output from 'ghc-pkg'"
        brkn <- getBroken
@@ -206,13 +234,14 @@ brokenConfs v =
        if null brkn
            then return ([], [])
            else do vsay v "brokenConfs: reading '*.conf' files"
-                   cnfs <- readConf
+                   cnfs <- readConf v
                    vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
                    return $ partitionEithers $ map (matchConf cnfs) brkn
 
 -- Return the closure of all packages affected by breakage
-getBroken :: IO [PackageIdentifier]
-getBroken = liftM (mapMaybe simpleParse . words)
+-- in format of ["name-version", ... ]
+getBroken :: IO [CabalPV]
+getBroken = liftM words
             $ ghcPkgRawOut ["check", "--simple-output"]
 
 -- -----------------------------------------------------------------------------

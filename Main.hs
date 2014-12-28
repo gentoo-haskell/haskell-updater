@@ -110,7 +110,7 @@ getPackages v target =
   where printUnknownPackages [] = return ()
         printUnknownPackages ps =
             do say v "\nThe following packages don't seem to have been installed by your package manager:"
-               printList v display ps
+               printList v id ps
         printUnknownFiles [] = return ()
         printUnknownFiles fs =
             do say v $ "\nThe following files are those corresponding to packages installed by your package manager\n" ++
