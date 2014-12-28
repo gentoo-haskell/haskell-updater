@@ -153,12 +153,17 @@ addConf v cmp conf = do
          ) of
         (Just dn, _) -> return $ Map.insert dn conf cmp
         (_, Just dn) -> return $ Map.insert dn conf cmp
-        _            -> do say v $ unwords [ "failed to parse "
+        -- empty files are created for
+        -- phony packages like CABAL_CORE_LIB_GHC_PV
+        -- and binary-only packages.
+        _ | BS.null cont
+                     -> return cmp
+        _            -> do say v $ unwords [ "failed to parse"
                                            , show conf
                                            , ":"
                                            , show (BS.take 30 cont)
                                            ]
-                           return $ cmp
+                           return cmp
 
 checkPkgs :: Verbosity
              -> ([CabalPV], [FilePath])
