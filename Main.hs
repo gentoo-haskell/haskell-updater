@@ -14,8 +14,6 @@ import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.Util
 
-import Distribution.Text(display)
-
 import Data.Either(partitionEithers)
 import Data.List(foldl1', nub)
 import Data.Version(showVersion)
