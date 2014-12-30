@@ -31,6 +31,7 @@ import Distribution.Text(display)
 import Data.Char(isDigit)
 import Data.Either(partitionEithers)
 import Data.Maybe(fromJust)
+import qualified Data.List as L
 import qualified Data.Map as Map
 import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
@@ -237,7 +238,11 @@ brokenConfs v =
        brkn <- getBroken
        -- Check if we actually have to go look up files and
        -- do IO.
-       vsay v $ "brokenConfs: resolving package names to gentoo equivalents. " ++ show (length brkn) ++ " are broken"
+       vsay v $ unwords ["brokenConfs: resolving package names to gentoo equivalents."
+                        , show (length brkn)
+                        , "are broken:"
+                        , L.intercalate " " brkn
+                        ]
        if null brkn
            then return ([], [])
            else do vsay v "brokenConfs: reading '*.conf' files"
