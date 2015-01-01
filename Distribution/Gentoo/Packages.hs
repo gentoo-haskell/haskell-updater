@@ -16,7 +16,6 @@ module Distribution.Gentoo.Packages
        , pkgsHaveContent
        , hasContentMatching
        , hasDirMatching
-       , hasObjMatching
        ) where
 
 import Distribution.Gentoo.Util
