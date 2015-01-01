@@ -172,8 +172,9 @@ checkPkgs :: Verbosity
              -> ([CabalPV], [FilePath])
              -> IO ([Package],[CabalPV],[FilePath])
 checkPkgs _v (pns,cnfs)
-  = do pkgs <- haveFiles cnfs
-       return (pkgs, pns, [])
+  = do files_to_pkgs <- resolveFiles cnfs
+       let (files, pkgs) = unzip files_to_pkgs
+       return (pkgs, pns, cnfs L.\\ files)
 
 -- -----------------------------------------------------------------------------
 

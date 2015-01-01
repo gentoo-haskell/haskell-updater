@@ -12,7 +12,7 @@ module Distribution.Gentoo.Packages
        , Content
        , notGHC
        , printPkg
-       , haveFiles
+       , resolveFiles
        , pkgsHaveContent
        , hasDirMatching
        ) where
@@ -116,15 +116,11 @@ pkgDBDir = "/var/db/pkg"
 -- Representation of individual lines in a CONTENTS file.
 data Content = Dir BSFilePath
              | Obj BSFilePath
-               deriving (Eq, Show)
+               deriving (Eq, Show, Ord)
 
 isDir         :: Content -> Bool
 isDir (Dir _) = True
 isDir _       = False
-
-isObj         :: Content -> Bool
-isObj (Obj _) = True
-isObj _       = False
 
 pathOf           :: Content -> BSFilePath
 pathOf (Dir dir) = dir
@@ -137,9 +133,6 @@ hasContentMatching p = any p . map pathOf
 
 hasDirMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
 hasDirMatching p = hasContentMatching p . filter isDir
-
-hasObjMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
-hasObjMatching p = hasContentMatching p . filter isObj
 
 -- Parse the CONTENTS file.
 parseContents    :: VCatPkg -> IO [Content]
@@ -174,12 +167,16 @@ parseContents cp = do ex <- doesFileExist cFile
 
 -- -----------------------------------------------------------------------------
 
--- Find all the packages that contain any of the given files.
-haveFiles :: [FilePath] -> IO [Package]
-haveFiles fps = pkgsHaveContent p
+-- Find all the packages that contain given files.
+resolveFiles :: [FilePath] -> IO [(FilePath, Package)]
+resolveFiles fps = liftM expand $ forPkg grep
   where
-    fps' = S.fromList $ map BS.pack fps
-    p = hasObjMatching (`S.member` fps')
+    fps' = S.fromList $ map (Obj . BS.pack) fps
+    expand pfs = [ (BS.unpack fn, pn)
+                 | (pn, conts) <- pfs
+                 , Obj fn <- conts
+                 ]
+    grep pn cont = Just (pn, filter (\e -> S.member e fps') cont)
 
 -- | Run predecate 'p' for each installed package
 --   and gather all 'Just' values
