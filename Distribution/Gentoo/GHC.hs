@@ -244,12 +244,10 @@ brokenConfs v =
                         , "are broken:"
                         , L.intercalate " " brkn
                         ]
-       if null brkn
-           then return ([], [])
-           else do vsay v "brokenConfs: reading '*.conf' files"
-                   cnfs <- readConf v
-                   vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
-                   return $ partitionEithers $ map (matchConf cnfs) brkn
+       vsay v "brokenConfs: reading '*.conf' files"
+       cnfs <- readConf v
+       vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
+       return $ partitionEithers $ map (matchConf cnfs) brkn
 
 -- Return the closure of all packages affected by breakage
 -- in format of ["name-version", ... ]
