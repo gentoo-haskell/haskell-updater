@@ -14,7 +14,6 @@ module Distribution.Gentoo.Packages
        , printPkg
        , haveFiles
        , pkgsHaveContent
-       , hasContentMatching
        , hasDirMatching
        ) where
 
