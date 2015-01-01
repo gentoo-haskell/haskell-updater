@@ -20,7 +20,6 @@ module Distribution.Gentoo.Packages
 import Distribution.Gentoo.Util
 
 import Data.Char(isDigit, isAlphaNum)
-import Data.List(delete)
 import Data.Maybe(mapMaybe, listToMaybe)
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8(ByteString)
@@ -186,7 +185,7 @@ haveFiles fps = pkgsHaveContent p
 -- provided predicate; to be used with the searching predicates
 -- above.
 pkgsHaveContent   :: ([Content] -> Bool) -> IO [Package]
-pkgsHaveContent p = do cs <- installedCats'
+pkgsHaveContent p = do cs <- installedCats
                        cps <- concatMapM (catHasContent p) cs
                        mapM toPackage cps
 
@@ -203,16 +202,6 @@ isCat fp = do isD <- doesDirectoryExist (pkgDBDir </> fp)
 -- Return all Categories known in this system.
 installedCats :: IO [Category]
 installedCats = filterM isCat =<< getDirectoryContents' pkgDBDir
-
--- We are most likely to need to look in dev-haskell, so put that
--- first in our list.
-installedCats' :: IO [Category]
-installedCats' = do cats <- installedCats
-                    return $ if haskCat `elem` cats
-                             then haskCat : delete haskCat cats
-                             else cats
-  where
-    haskCat = "dev-haskell"
 
 -- Return all packages in this category whose contents match the
 -- provided predicate.
