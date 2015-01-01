@@ -17,17 +17,17 @@ module Distribution.Gentoo.Packages
        , hasDirMatching
        ) where
 
-import Distribution.Gentoo.Util
-
 import Data.Char(isDigit, isAlphaNum)
-import Data.Maybe(mapMaybe, listToMaybe)
+import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8(ByteString)
 import qualified Data.Set as S
 import System.Directory( doesDirectoryExist
                        , doesFileExist)
 import System.FilePath((</>))
-import Control.Monad(filterM, liftM)
+import Control.Monad
+
+import Distribution.Gentoo.Util
 
 -- -----------------------------------------------------------------------------
 
@@ -104,7 +104,7 @@ stripVersion = concat . takeUntilVer . breakAll partSep
     isVerFront _        = False
 
 pkgPath        :: VCatPkg -> FilePath
-pkgPath (c,vp) = pkgDBDir </> c </> vp
+pkgPath (c, vp) = pkgDBDir </> c </> vp
 
 pkgDBDir :: FilePath
 pkgDBDir = "/var/db/pkg"
@@ -181,13 +181,29 @@ haveFiles fps = pkgsHaveContent p
     fps' = S.fromList $ map BS.pack fps
     p = hasObjMatching (`S.member` fps')
 
+-- | Run predecate 'p' for each installed package
+--   and gather all 'Just' values
+forPkg :: (Package -> [Content] -> Maybe a) -> IO [a]
+forPkg p = do
+    categories <- installedCats
+    liftM catMaybes $ do
+        (flip concatMapM) categories $ \cat -> do
+            maybe_pkgs <- getDirectoryContents' (pkgDBDir </> cat)
+            packages <- filterM (\pn' -> doesDirectoryExist $ pkgPath (cat, pn')) maybe_pkgs
+            forM packages $ \pkg -> do
+                let cp = (cat, pkg)
+                cpn <- toPackage cp
+                cont <- parseContents cp
+                return $ p cpn cont
+
 -- Find which packages have Content information that matches the
 -- provided predicate; to be used with the searching predicates
 -- above.
 pkgsHaveContent   :: ([Content] -> Bool) -> IO [Package]
-pkgsHaveContent p = do cs <- installedCats
-                       cps <- concatMapM (catHasContent p) cs
-                       mapM toPackage cps
+pkgsHaveContent p = forPkg p'
+    where p' pn cont = if p cont
+                           then Just pn
+                           else Nothing
 
 -- Determine if this is a valid Category (such that at least one
 -- package in that category has been installed).
@@ -202,17 +218,3 @@ isCat fp = do isD <- doesDirectoryExist (pkgDBDir </> fp)
 -- Return all Categories known in this system.
 installedCats :: IO [Category]
 installedCats = filterM isCat =<< getDirectoryContents' pkgDBDir
-
--- Return all packages in this category whose contents match the
--- provided predicate.
-catHasContent     :: ([Content] -> Bool) -> Category -> IO [VCatPkg]
-catHasContent p c = do inDir <- getDirectoryContents' cfp
-                       let psbl = map ((,) c) inDir
-                       pkgs  <- filterM (doesDirectoryExist . pkgPath) psbl
-                       filterM (hasContent p) pkgs
-  where
-    cfp = pkgDBDir </> c
-
--- Determine if this package matches the predicate.
-hasContent   :: ([Content] -> Bool) -> VCatPkg -> IO Bool
-hasContent p = liftM p . parseContents
