@@ -30,7 +30,7 @@ import Distribution.Text(display)
 -- Other imports
 import Data.Char(isDigit)
 import Data.Either(partitionEithers)
-import Data.Maybe(fromJust)
+import Data.Maybe
 import qualified Data.List as L
 import qualified Data.Map as Map
 import Data.Map(Map)
@@ -39,7 +39,7 @@ import System.FilePath((</>), takeExtension, pathSeparator)
 import System.Directory( canonicalizePath
                        , doesDirectoryExist
                        , findExecutable)
-import Control.Monad(foldM, liftM)
+import Control.Monad
 
 import Output
 
@@ -173,18 +173,6 @@ checkPkgs :: Verbosity
              -> ([CabalPV], [FilePath])
              -> IO ([Package],[CabalPV],[FilePath])
 checkPkgs v (pns, gentoo_cnfs) = do
-       -- Around Jan 2015 we have started to install
-       -- all the .conf files in 'src_install()' phase.
-       -- Here we pick orphan ones and notify user about it.
-       registered_confs <- ghcLibDir >>= confFiles "package.conf.d"
-       confs_to_pkgs <- resolveFiles registered_confs
-       let (conf_files, _conf_pkgs) = unzip confs_to_pkgs
-           orphan_conf_files = registered_confs L.\\ conf_files
-       vsay v $ unwords [ "checkPkgs: ghc .conf orphans:"
-                        , show (length orphan_conf_files)
-                        , "of"
-                        , show (length registered_confs)
-                        ]
        files_to_pkgs <- resolveFiles gentoo_cnfs
        let (gentoo_files, pkgs) = unzip files_to_pkgs
            orphan_gentoo_files = gentoo_cnfs L.\\ gentoo_files
@@ -193,7 +181,7 @@ checkPkgs v (pns, gentoo_cnfs) = do
                         , "of"
                         , show (length gentoo_cnfs)
                         ]
-       return (pkgs, pns, orphan_gentoo_files ++ orphan_conf_files)
+       return (pkgs, pns, orphan_gentoo_files)
 
 -- -----------------------------------------------------------------------------
 
@@ -255,24 +243,49 @@ brokenPkgs v = brokenConfs v >>= checkPkgs v
 brokenConfs :: Verbosity -> IO ([CabalPV], [FilePath])
 brokenConfs v =
     do vsay v "brokenConfs: getting broken output from 'ghc-pkg'"
-       brkn <- getBroken
+       ghc_pkg_brokens <- getBroken
        -- Check if we actually have to go look up files and
        -- do IO.
        vsay v $ unwords ["brokenConfs: resolving package names to gentoo equivalents."
-                        , show (length brkn)
+                        , show (length ghc_pkg_brokens)
                         , "are broken:"
-                        , L.intercalate " " brkn
+                        , L.intercalate " " ghc_pkg_brokens
                         ]
+
+       (orphan_broken, orphan_confs) <- getOrphanBroken
+       vsay v $ unwords [ "checkPkgs: ghc .conf orphans:"
+                        , show (length orphan_broken)
+                        , "are orphan:"
+                        , L.intercalate " " orphan_broken
+                        ]
+
+       let all_broken = ghc_pkg_brokens ++ orphan_broken
+
        vsay v "brokenConfs: reading '*.conf' files"
        cnfs <- readConf v
        vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
-       return $ partitionEithers $ map (matchConf cnfs) brkn
+       let (known_broken, orphans) = partitionEithers $ map (matchConf cnfs) all_broken
+       return (known_broken, orphan_confs ++ orphans)
 
 -- Return the closure of all packages affected by breakage
 -- in format of ["name-version", ... ]
 getBroken :: IO [CabalPV]
 getBroken = liftM words
             $ ghcPkgRawOut ["check", "--simple-output"]
+
+getOrphanBroken :: IO ([CabalPV], [FilePath])
+getOrphanBroken = do
+       -- Around Jan 2015 we have started to install
+       -- all the .conf files in 'src_install()' phase.
+       -- Here we pick orphan ones and notify user about it.
+       registered_confs <- ghcLibDir >>= confFiles "package.conf.d"
+       confs_to_pkgs <- resolveFiles registered_confs
+       let (conf_files, _conf_pkgs) = unzip confs_to_pkgs
+           orphan_conf_files = registered_confs L.\\ conf_files
+       orphan_packages <- liftM catMaybes $
+                              forM orphan_conf_files $
+                                  liftM parse_as_ghc_package . BS.readFile
+       return (orphan_packages, orphan_conf_files)
 
 -- -----------------------------------------------------------------------------
 
