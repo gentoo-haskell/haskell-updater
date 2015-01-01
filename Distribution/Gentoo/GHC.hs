@@ -90,14 +90,15 @@ ghcPkgLoc :: IO FilePath
 ghcPkgLoc = liftM fromJust $ findExecutable "ghc-pkg"
 
 -- Return the Gentoo .conf files found in this GHC libdir
-confFiles     :: FilePath -> IO [FilePath]
-confFiles dir = do let gDir = dir </> "gentoo"
-                   exists <- doesDirectoryExist gDir
-                   if exists
-                     then do conts <- getDirectoryContents' gDir
-                             return $ map (gDir </>)
-                               $ filter isConf conts
-                     else return []
+confFiles :: FilePath -> FilePath -> IO [FilePath]
+confFiles subdir dir = do
+    let gDir = dir </> subdir
+    exists <- doesDirectoryExist gDir
+    if exists
+        then do conts <- getDirectoryContents' gDir
+                return $ map (gDir </>)
+                    $ filter isConf conts
+        else return []
   where
     isConf file = takeExtension file == ".conf"
 
@@ -115,7 +116,7 @@ matchConf = tryMaybe . flip Map.lookup
 -- Read in all Gentoo .conf files from the current GHC version and
 -- create a Map
 readConf :: Verbosity -> IO ConfMap
-readConf v = ghcLibDir >>= confFiles >>= foldM (addConf v) Map.empty
+readConf v = ghcLibDir >>= confFiles "gentoo" >>= foldM (addConf v) Map.empty
 
 -- cabal package text format
 -- "[InstalledPackageInfo {installedPackageId = Insta..."
@@ -171,10 +172,28 @@ addConf v cmp conf = do
 checkPkgs :: Verbosity
              -> ([CabalPV], [FilePath])
              -> IO ([Package],[CabalPV],[FilePath])
-checkPkgs _v (pns,cnfs)
-  = do files_to_pkgs <- resolveFiles cnfs
-       let (files, pkgs) = unzip files_to_pkgs
-       return (pkgs, pns, cnfs L.\\ files)
+checkPkgs v (pns, gentoo_cnfs) = do
+       -- Around Jan 2015 we have started to install
+       -- all the .conf files in 'src_install()' phase.
+       -- Here we pick orphan ones and notify user about it.
+       registered_confs <- ghcLibDir >>= confFiles "package.conf.d"
+       confs_to_pkgs <- resolveFiles registered_confs
+       let (conf_files, _conf_pkgs) = unzip confs_to_pkgs
+           orphan_conf_files = registered_confs L.\\ conf_files
+       vsay v $ unwords [ "checkPkgs: ghc .conf orphans:"
+                        , show (length orphan_conf_files)
+                        , "of"
+                        , show (length registered_confs)
+                        ]
+       files_to_pkgs <- resolveFiles gentoo_cnfs
+       let (gentoo_files, pkgs) = unzip files_to_pkgs
+           orphan_gentoo_files = gentoo_cnfs L.\\ gentoo_files
+       vsay v $ unwords [ "checkPkgs: searching for gentoo .conf orphans"
+                        , show (length orphan_gentoo_files)
+                        , "of"
+                        , show (length gentoo_cnfs)
+                        ]
+       return (pkgs, pns, orphan_gentoo_files ++ orphan_conf_files)
 
 -- -----------------------------------------------------------------------------
 
