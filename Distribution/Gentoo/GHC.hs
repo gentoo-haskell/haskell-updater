@@ -115,8 +115,8 @@ matchConf = tryMaybe . flip Map.lookup
 
 -- Read in all Gentoo .conf files from the current GHC version and
 -- create a Map
-readConf :: Verbosity -> IO ConfMap
-readConf v = ghcLibDir >>= confFiles "gentoo" >>= foldM (addConf v) Map.empty
+readConf :: Verbosity -> FilePath -> IO ConfMap
+readConf v conf_subdir = ghcLibDir >>= confFiles conf_subdir >>= foldM (addConf v) Map.empty
 
 -- cabal package text format
 -- "[InstalledPackageInfo {installedPackageId = Insta..."
@@ -262,7 +262,7 @@ brokenConfs v =
        let all_broken = ghc_pkg_brokens ++ orphan_broken
 
        vsay v "brokenConfs: reading '*.conf' files"
-       cnfs <- readConf v
+       cnfs <- readConf v "gentoo"
        vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
        let (known_broken, orphans) = partitionEithers $ map (matchConf cnfs) all_broken
        return (known_broken, orphan_confs ++ orphans)
