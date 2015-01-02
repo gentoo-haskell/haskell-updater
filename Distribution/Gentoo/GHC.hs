@@ -259,7 +259,14 @@ brokenConfs v =
                         , L.intercalate " " orphan_broken
                         ]
 
-       let all_broken = ghc_pkg_brokens ++ orphan_broken
+       installed_but_not_registered <- getNotRegistered v
+       vsay v $ unwords [ "checkPkgs: ghc .conf not registered:"
+                        , show (length installed_but_not_registered)
+                        , "are not registered:"
+                        , L.intercalate " " installed_but_not_registered
+                        ]
+
+       let all_broken = ghc_pkg_brokens ++ orphan_broken ++ installed_but_not_registered
 
        vsay v "brokenConfs: reading '*.conf' files"
        cnfs <- readConf v "gentoo"
@@ -286,6 +293,17 @@ getOrphanBroken = do
                               forM orphan_conf_files $
                                   liftM parse_as_ghc_package . BS.readFile
        return (orphan_packages, orphan_conf_files)
+
+-- Return packages, that seem to have
+-- been installed via emerge (have gentoo/.conf entry),
+-- but are not registered in package.conf.d.
+-- Usually happens on manual cleaning or
+-- due to unregistration bugs in old eclass.
+getNotRegistered :: Verbosity -> IO [CabalPV]
+getNotRegistered v = do
+    installed_confs  <- readConf v "gentoo"
+    registered_confs <- readConf v "package.conf.d"
+    return $ Map.keys installed_confs L.\\ Map.keys registered_confs
 
 -- -----------------------------------------------------------------------------
 
