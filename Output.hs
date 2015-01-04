@@ -43,10 +43,10 @@ printList v f = mapM_ (say v . (++) "  * " . f)
 
 -- Print a list of packages, with a description of what they are.
 pkgListPrint :: Verbosity -> String -> [Package] -> IO ()
-pkgListPrint v desc pkgs
-    = if null pkgs
-      then say v $ unwords ["No", desc, "packages found!\n"]
-      else do say v $ unwords ["Found the following"
+pkgListPrint v desc pkgs = do
+      if null pkgs
+        then say v $ unwords ["No", desc, "packages found!"]
+        else do say v $ unwords ["Found the following"
                               , desc, "packages:"]
-              printList v printPkg pkgs
-              say v ""
+                printList v printPkg pkgs
+      say v ""
