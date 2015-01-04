@@ -110,14 +110,18 @@ getPackages v target =
 
   where printUnknownPackagesLn [] = return ()
         printUnknownPackagesLn ps =
-            do say v "The following packages don't seem to have been installed by your package manager:"
+            do say v "The following packages are orphan (not installed by your package manager):"
                printList v id ps
                say v ""
         printUnknownFilesLn [] = return ()
         printUnknownFilesLn fs =
-            do say v $ "The following files are those corresponding to packages installed by your package manager\n" ++
-                          "which can't be matched up to the packages that own them."
+            do say v $ "The following files are orphan (not installed by your package manager):"
                printList v id fs
+               say v $ "It is strongly advised to remove orphans:"
+               say v $ "    One of known sources of orphans is packages installed before 01 Jan 2015."
+               say v $ "    If you know it's your case you can easily remove such files:"
+               say v $ "        # rm -v -- `qfile -o $(ghc --print-libdir)/package.conf.d/*.conf`"
+               say v $ "    It will likely need one more 'haskell-updater' run."
                say v ""
 
 allGetPackages :: Verbosity -> Set.Set BuildTarget -> IO [Package]
