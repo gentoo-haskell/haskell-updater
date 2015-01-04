@@ -90,19 +90,19 @@ getPackages v target =
     case target of
         GhcUpgrade -> do say v "Searching for packages installed with a different version of GHC."
                          pkgs <- oldGhcPkgs v
-                         pkgListPrint v "old" pkgs
+                         pkgListPrintLn v "old" pkgs
                          return pkgs
 
         AllInstalled -> do say v "Finding all libraries installed with the current version of GHC."
                            pkgs <- allInstalledPackages
-                           pkgListPrint v "installed" pkgs
+                           pkgListPrintLn v "installed" pkgs
                            return pkgs
 
         DepCheck   -> do say v "Searching for Haskell libraries with broken dependencies."
                          (pkgs, unknown_packages, unknown_files) <- brokenPkgs v
                          printUnknownPackages unknown_packages
                          printUnknownFiles unknown_files
-                         pkgListPrint v "broken" (notGHC pkgs)
+                         pkgListPrintLn v "broken" (notGHC pkgs)
                          return pkgs
 
   where printUnknownPackages [] = return ()

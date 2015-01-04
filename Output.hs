@@ -6,7 +6,7 @@
    Fancy output facility.
 -}
 module Output (
-                pkgListPrint
+                pkgListPrintLn
               , printList
               , say
               , vsay
@@ -42,8 +42,8 @@ printList :: Verbosity -> (a -> String) -> [a] -> IO ()
 printList v f = mapM_ (say v . (++) "  * " . f)
 
 -- Print a list of packages, with a description of what they are.
-pkgListPrint :: Verbosity -> String -> [Package] -> IO ()
-pkgListPrint v desc pkgs = do
+pkgListPrintLn :: Verbosity -> String -> [Package] -> IO ()
+pkgListPrintLn v desc pkgs = do
       if null pkgs
         then say v $ unwords ["No", desc, "packages found!"]
         else do say v $ unwords ["Found the following"
