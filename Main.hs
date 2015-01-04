@@ -89,31 +89,36 @@ getPackages :: Verbosity -> BuildTarget -> IO [Package]
 getPackages v target =
     case target of
         GhcUpgrade -> do say v "Searching for packages installed with a different version of GHC."
+                         say v ""
                          pkgs <- oldGhcPkgs v
                          pkgListPrintLn v "old" pkgs
                          return pkgs
 
-        AllInstalled -> do say v "Finding all libraries installed with the current version of GHC."
+        AllInstalled -> do say v "Searching for packages installed with the current version of GHC."
+                           say v ""
                            pkgs <- allInstalledPackages
                            pkgListPrintLn v "installed" pkgs
                            return pkgs
 
         DepCheck   -> do say v "Searching for Haskell libraries with broken dependencies."
+                         say v ""
                          (pkgs, unknown_packages, unknown_files) <- brokenPkgs v
-                         printUnknownPackages unknown_packages
-                         printUnknownFiles unknown_files
+                         printUnknownPackagesLn unknown_packages
+                         printUnknownFilesLn unknown_files
                          pkgListPrintLn v "broken" (notGHC pkgs)
                          return pkgs
 
-  where printUnknownPackages [] = return ()
-        printUnknownPackages ps =
-            do say v "\nThe following packages don't seem to have been installed by your package manager:"
+  where printUnknownPackagesLn [] = return ()
+        printUnknownPackagesLn ps =
+            do say v "The following packages don't seem to have been installed by your package manager:"
                printList v id ps
-        printUnknownFiles [] = return ()
-        printUnknownFiles fs =
-            do say v $ "\nThe following files are those corresponding to packages installed by your package manager\n" ++
+               say v ""
+        printUnknownFilesLn [] = return ()
+        printUnknownFilesLn fs =
+            do say v $ "The following files are those corresponding to packages installed by your package manager\n" ++
                           "which can't be matched up to the packages that own them."
                printList v id fs
+               say v ""
 
 allGetPackages :: Verbosity -> Set.Set BuildTarget -> IO [Package]
 allGetPackages v = liftM nub
