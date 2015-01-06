@@ -28,7 +28,8 @@ Author:              Ivan Lazar Miljenovic,
 Maintainer:          haskell@gentoo.org
 Cabal-Version:       >= 1.6
 Build-Type:          Simple
-Extra-Source-Files:  TODO
+Extra-Source-Files:  TODO,
+                     man/haskell-updater.1
 
 Source-Repository head
     Type:         git
