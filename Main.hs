@@ -14,17 +14,21 @@ import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.Util
 
-import Data.Either(partitionEithers)
-import Data.List(foldl1', nub)
-import Data.Version(showVersion)
-import qualified Data.Set as Set
-import qualified Paths_haskell_updater as Paths(version)
-import System.Console.GetOpt
-import System.Environment(getArgs, getProgName)
-import System.Exit(ExitCode(..), exitSuccess, exitWith)
-import System.IO(hPutStrLn, stderr)
-import Control.Monad(liftM, unless)
-import System.Process(rawSystem)
+import           Control.Monad         (liftM, unless)
+import           Data.Char             (toLower)
+import           Data.Either           (partitionEithers)
+import           Data.List             (foldl1', nub)
+import           Data.Map              (Map)
+import qualified Data.Map              as M
+import           Data.Maybe            (fromJust)
+import qualified Data.Set              as Set
+import           Data.Version          (showVersion)
+import qualified Paths_haskell_updater as Paths (version)
+import           System.Console.GetOpt
+import           System.Environment    (getArgs, getProgName)
+import           System.Exit           (ExitCode (..), exitSuccess, exitWith)
+import           System.IO             (hPutStrLn, stderr)
+import           System.Process        (rawSystem)
 
 import Output
 
@@ -147,6 +151,17 @@ data WithCmd = RunOnly
              | PrintAndRun
                deriving (Eq, Ord, Show, Read)
 
+type WithUserCmd = Either String WithCmd
+
+withCmdMap :: Map String WithCmd
+withCmdMap = M.fromList [ ("print", PrintOnly)
+                        , ("run", RunOnly)
+                        , ("print-and-run", PrintAndRun)
+                        ]
+
+defaultWithCmd :: String
+defaultWithCmd = "print-and-run"
+
 runCmd :: WithCmd -> String -> [String] -> IO a
 runCmd mode cmd args = case mode of
         RunOnly     ->                      runCommand cmd args
@@ -178,6 +193,7 @@ data Flag = HelpFlag
           | QuietFlag
           | VerboseFlag
           | ListOnlyFlag
+          | Cmd String
           deriving (Eq, Ord, Show, Read)
 
 parseArgs :: PkgManager -> [String] -> Either String (RunModifier, Action)
@@ -190,22 +206,25 @@ argParser dPM (fls, nonoptions, unrecognized, errs)
     | (not . null) errs         = Left $ unwords $ "Errors in arguments:" : errs
     | (not . null) unrecognized = Left $ unwords $ "Unknown options:" : unrecognized
     | (not . null) bPms         = Left $ unwords $ "Unknown package managers:" : bPms
+    | (not . null) bCmds        = Left $ unwords $ "Unknown action:" : bCmds
     | otherwise                 = Right (rm, a)
   where
       (fls', as) = partitionBy flagToAction fls
       a = combineAllActions as
-      (opts, pms) = partitionBy flagToPM fls'
+      (fls'', pms) = partitionBy flagToPM fls'
       (bPms, pms') = partitionBy isValidPM pms
+      (opts, cmds') = partitionBy flagToCmd fls''
+      (bCmds, cmds) = partitionBy isValidCmd cmds'
       pm = emptyElse dPM last pms'
       opts' = Set.fromList opts
+      cmd = emptyElse (fromJust $ M.lookup defaultWithCmd withCmdMap) last cmds
       hasFlag = flip Set.member opts'
       pmFlags = bool (PMQuiet:) id (hasFlag QuietFlag)
                 . bool id (PretendBuild:) (hasFlag Pretend)
                 . return $ bool UpdateDeep UpdateAsNeeded (hasFlag NoDeep)
       rm = RM { pkgmgr   = pm
               , flags    = pmFlags
-                -- We need to get Flags that represent this as well.
-              , withCmd  = PrintAndRun
+              , withCmd  = cmd
               , rawPMArgs = nonoptions
               , verbosity = case () of
                                 _ | hasFlag VerboseFlag -> Verbose
@@ -226,6 +245,22 @@ flagToPM                   :: Flag -> Either Flag PkgManager
 flagToPM (CustomPMFlag pm) = Right $ stringToCustomPM pm
 flagToPM (PM pm)           = Right $ choosePM pm
 flagToPM f                 = Left f
+
+flagToCmd :: Flag -> Either Flag WithUserCmd
+flagToCmd (Cmd cmd) = Right $ chooseCmd cmd
+flagToCmd f = Left f
+
+chooseCmd :: String -> WithUserCmd
+chooseCmd cmd = chooseCmd' $ map toLower cmd
+  where
+    chooseCmd' :: String -> WithUserCmd
+    chooseCmd' "run"   = Right RunOnly
+    chooseCmd' "print" = Right PrintOnly
+    chooseCmd' "print-and-run" = Right PrintAndRun
+    chooseCmd' c = Left c
+
+isValidCmd :: WithUserCmd -> Either String WithCmd
+isValidCmd = id
 
 options :: [OptDescr Flag]
 options =
@@ -249,6 +284,9 @@ options =
       "Output only list of packages for rebuild. One package per line."
     , Option ['V']      ["version"]         (NoArg VersionFlag)
       "Version information."
+    , Option []          ["action"]          (ReqArg Cmd "action")
+      $ "Specify whether to run the PM command or just print it\n"
+            ++ actionList ++ defAction
     , Option ['q']      ["quiet"]           (NoArg QuietFlag)
       "Print only fatal errors (to stderr)."
     , Option ['v']      ["verbose"]         (NoArg VerboseFlag)
@@ -262,6 +300,9 @@ options =
               \The default package manager is: " ++ defaultPMName ++ ",\n\
               \which can be overriden with the \"PACKAGE_MANAGER\"\n\
               \environment variable."
+      actionList = unlines . map (" * " ++) $ M.keys withCmdMap
+      defAction = "The last specified action is chosen.\n\
+                       \The default action is: " ++ defaultWithCmd
 
 -- -----------------------------------------------------------------------------
 -- Printing information.
