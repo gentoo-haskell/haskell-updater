@@ -1,3 +1,4 @@
+{-# Language TupleSections #-}
 {- |
    Module      : Distribution.Gentoo.Packages
    Description : Dealing with installed packages on Gentoo.
@@ -18,6 +19,7 @@ module Distribution.Gentoo.Packages
        ) where
 
 import Data.Char(isDigit, isAlphaNum)
+import Data.List(isPrefixOf)
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8(ByteString)
@@ -186,12 +188,18 @@ forPkg p = do
     liftM catMaybes $ do
         (flip concatMapM) categories $ \cat -> do
             maybe_pkgs <- getDirectoryContents' (pkgDBDir </> cat)
-            packages <- filterM (\pn' -> doesDirectoryExist $ pkgPath (cat, pn')) maybe_pkgs
+            packages <- filterM (isPackage . (cat,)) maybe_pkgs
             forM packages $ \pkg -> do
                 let cp = (cat, pkg)
                 cpn <- toPackage cp
                 cont <- parseContents cp
                 return $ p cpn cont
+  where
+    isPackage :: VCatPkg -> IO Bool
+    isPackage vcp@(_, vp) = do
+        c1 <- doesDirectoryExist $ pkgPath vcp
+        let c2 = not $ "-MERGING-" `isPrefixOf` vp
+        return $ c1 && c2
 
 -- Find which packages have Content information that matches the
 -- provided predicate; to be used with the searching predicates
