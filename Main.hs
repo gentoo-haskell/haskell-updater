@@ -331,9 +331,10 @@ progInfo = do pName <- getProgName
 systemInfo :: Verbosity -> RunModifier -> IO ()
 systemInfo v rm = do ver    <- ghcVersion
                      pName  <- getProgName
+                     let pVer = showVersion Paths.version
                      pLoc   <- ghcLoc
                      libDir <- ghcLibDir
-                     say v $ "Running " ++ pName ++ " using GHC " ++ ver
+                     say v $ "Running " ++ pName ++ "-" ++ pVer ++ " using GHC " ++ ver
                      say v $ "  * Executable: " ++ pLoc
                      say v $ "  * Library directory: " ++ libDir
                      say v $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
