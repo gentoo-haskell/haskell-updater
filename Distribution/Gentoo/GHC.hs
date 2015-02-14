@@ -15,6 +15,7 @@ module Distribution.Gentoo.GHC
        , oldGhcPkgs
        , brokenPkgs
        , allInstalledPackages
+       , unCPV
        ) where
 
 import Distribution.Gentoo.Util
@@ -105,7 +106,9 @@ confFiles subdir dir = do
 tryMaybe     :: (a -> Maybe b) -> a -> Either a b
 tryMaybe f a = maybe (Left a) Right $ f a
 
-type CabalPV = String -- serialized 'PackageIdentifier'
+newtype CabalPV = CPV { unCPV :: String } -- serialized 'PackageIdentifier'
+    deriving (Ord, Eq) -- for ConfMap, can be removed once ConfMap goes away
+
 type ConfMap = Map CabalPV FilePath
 
 -- Attempt to match the provided broken package to one of the
@@ -128,7 +131,7 @@ parse_as_cabal_package cont =
         -- for this version of GHC will have a .conf
         -- file containing just []
         [([],_)] -> Nothing
-        rd       -> Just $ display $ cfNm rd
+        rd       -> Just $ CPV $ display $ cfNm rd
   where
     -- It's not InstalledPackageInfo, as it can't read the modules
     cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
@@ -143,7 +146,7 @@ parse_as_ghc_package cont =
     case (map BS.words . BS.lines) cont of
         ( [name_key, bn] : [ver_key, bv] : _)
             | name_key == BS.pack "name:" && ver_key == BS.pack "version:"
-            -> Just $ BS.unpack bn ++ "-" ++ BS.unpack bv
+            -> Just $ CPV $ BS.unpack bn ++ "-" ++ BS.unpack bv
         _   -> Nothing
 
 -- Add this .conf file to the Map
@@ -153,9 +156,9 @@ addConf v cmp conf = do
     case ( parse_as_ghc_package cont
          , parse_as_cabal_package (BS.unpack cont)
          ) of
-        (Just dn, _) -> do vsay v $ unwords [conf, "resolved as ghc package:", dn]
+        (Just dn, _) -> do vsay v $ unwords [conf, "resolved as ghc package:", unCPV dn]
                            return $ Map.insert dn conf cmp
-        (_, Just dn) -> do vsay v $ unwords [conf, "resolved as cabal package:", dn]
+        (_, Just dn) -> do vsay v $ unwords [conf, "resolved as cabal package:", unCPV dn]
                            return $ Map.insert dn conf cmp
         -- empty files are created for
         -- phony packages like CABAL_CORE_LIB_GHC_PV
@@ -247,21 +250,21 @@ brokenConfs v =
        vsay v $ unwords ["brokenConfs: resolving package names to gentoo equivalents."
                         , show (length ghc_pkg_brokens)
                         , "are broken:"
-                        , L.intercalate " " ghc_pkg_brokens
+                        , L.intercalate " " (map unCPV ghc_pkg_brokens)
                         ]
 
        (orphan_broken, orphan_confs) <- getOrphanBroken
        vsay v $ unwords [ "checkPkgs: ghc .conf orphans:"
                         , show (length orphan_broken)
                         , "are orphan:"
-                        , L.intercalate " " orphan_broken
+                        , L.intercalate " " (map unCPV orphan_broken)
                         ]
 
        installed_but_not_registered <- getNotRegistered v
        vsay v $ unwords [ "checkPkgs: ghc .conf not registered:"
                         , show (length installed_but_not_registered)
                         , "are not registered:"
-                        , L.intercalate " " installed_but_not_registered
+                        , L.intercalate " " (map unCPV installed_but_not_registered)
                         ]
 
        let all_broken = ghc_pkg_brokens ++ orphan_broken ++ installed_but_not_registered
@@ -275,7 +278,7 @@ brokenConfs v =
 -- Return the closure of all packages affected by breakage
 -- in format of ["name-version", ... ]
 getBroken :: IO [CabalPV]
-getBroken = liftM words
+getBroken = liftM (map CPV . words)
             $ ghcPkgRawOut ["check", "--simple-output"]
 
 getOrphanBroken :: IO ([CabalPV], [FilePath])

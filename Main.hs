@@ -107,7 +107,7 @@ getPackages v target =
         DepCheck   -> do say v "Searching for Haskell libraries with broken dependencies."
                          say v ""
                          (pkgs, unknown_packages, unknown_files) <- brokenPkgs v
-                         printUnknownPackagesLn unknown_packages
+                         printUnknownPackagesLn (map unCPV unknown_packages)
                          printUnknownFilesLn unknown_files
                          pkgListPrintLn v "broken" (notGHC pkgs)
                          return pkgs
