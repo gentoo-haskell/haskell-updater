@@ -244,8 +244,6 @@ brokenConfs :: Verbosity -> IO ([CabalPV], [FilePath])
 brokenConfs v =
     do vsay v "brokenConfs: getting broken output from 'ghc-pkg'"
        ghc_pkg_brokens <- getBroken
-       -- Check if we actually have to go look up files and
-       -- do IO.
        vsay v $ unwords ["brokenConfs: resolving package names to gentoo equivalents."
                         , show (length ghc_pkg_brokens)
                         , "are broken:"
