@@ -90,10 +90,19 @@ ghcPkgRawOut args = ghcPkgLoc >>= flip rawCommand args
 ghcPkgLoc :: IO FilePath
 ghcPkgLoc = liftM fromJust $ findExecutable "ghc-pkg"
 
+data ConfSubdir = GHCConfs
+                | GentooConfs
+
+subdirToDirname :: ConfSubdir -> FilePath
+subdirToDirname subdir =
+    case subdir of
+        GHCConfs    -> "package.conf.d"
+        GentooConfs -> "gentoo"
+
 -- Return the Gentoo .conf files found in this GHC libdir
-confFiles :: FilePath -> FilePath -> IO [FilePath]
+confFiles :: ConfSubdir -> FilePath -> IO [FilePath]
 confFiles subdir dir = do
-    let gDir = dir </> subdir
+    let gDir = dir </> subdirToDirname subdir
     exists <- doesDirectoryExist gDir
     if exists
         then do conts <- getDirectoryContents' gDir
@@ -118,7 +127,7 @@ matchConf = tryMaybe . flip Map.lookup
 
 -- Read in all Gentoo .conf files from the current GHC version and
 -- create a Map
-readConf :: Verbosity -> FilePath -> IO ConfMap
+readConf :: Verbosity -> ConfSubdir -> IO ConfMap
 readConf v conf_subdir = ghcLibDir >>= confFiles conf_subdir >>= foldM (addConf v) Map.empty
 
 -- cabal package text format
@@ -270,7 +279,7 @@ brokenConfs v =
        let all_broken = ghc_pkg_brokens ++ orphan_broken ++ installed_but_not_registered
 
        vsay v "brokenConfs: reading '*.conf' files"
-       cnfs <- readConf v "gentoo"
+       cnfs <- readConf v GentooConfs
        vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
        let (known_broken, orphans) = partitionEithers $ map (matchConf cnfs) all_broken
        return (known_broken, orphan_confs ++ orphans)
@@ -286,7 +295,7 @@ getOrphanBroken = do
        -- Around Jan 2015 we have started to install
        -- all the .conf files in 'src_install()' phase.
        -- Here we pick orphan ones and notify user about it.
-       registered_confs <- ghcLibDir >>= confFiles "package.conf.d"
+       registered_confs <- ghcLibDir >>= confFiles GHCConfs
        confs_to_pkgs <- resolveFiles registered_confs
        let (conf_files, _conf_pkgs) = unzip confs_to_pkgs
            orphan_conf_files = registered_confs L.\\ conf_files
@@ -302,8 +311,8 @@ getOrphanBroken = do
 -- due to unregistration bugs in old eclass.
 getNotRegistered :: Verbosity -> IO [CabalPV]
 getNotRegistered v = do
-    installed_confs  <- readConf v "gentoo"
-    registered_confs <- readConf v "package.conf.d"
+    installed_confs  <- readConf v GentooConfs
+    registered_confs <- readConf v GHCConfs
     return $ Map.keys installed_confs L.\\ Map.keys registered_confs
 
 -- -----------------------------------------------------------------------------
