@@ -100,8 +100,8 @@ subdirToDirname subdir =
         GentooConfs -> "gentoo"
 
 -- Return the Gentoo .conf files found in this GHC libdir
-confFiles :: ConfSubdir -> IO [FilePath]
-confFiles subdir = do
+listConfFiles :: ConfSubdir -> IO [FilePath]
+listConfFiles subdir = do
     dir <- ghcLibDir
     let gDir = dir </> subdirToDirname subdir
     exists <- doesDirectoryExist gDir
@@ -129,7 +129,7 @@ matchConf = tryMaybe . flip Map.lookup
 -- Read in all Gentoo .conf files from the current GHC version and
 -- create a Map
 readConf :: Verbosity -> ConfSubdir -> IO ConfMap
-readConf v conf_subdir = confFiles conf_subdir >>= foldM (addConf v) Map.empty
+readConf v conf_subdir = listConfFiles conf_subdir >>= foldM (addConf v) Map.empty
 
 -- cabal package text format
 -- "[InstalledPackageInfo {installedPackageId = Insta..."
@@ -296,7 +296,7 @@ getOrphanBroken = do
        -- Around Jan 2015 we have started to install
        -- all the .conf files in 'src_install()' phase.
        -- Here we pick orphan ones and notify user about it.
-       registered_confs <- confFiles GHCConfs
+       registered_confs <- listConfFiles GHCConfs
        confs_to_pkgs <- resolveFiles registered_confs
        let (conf_files, _conf_pkgs) = unzip confs_to_pkgs
            orphan_conf_files = registered_confs L.\\ conf_files
