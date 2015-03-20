@@ -126,10 +126,10 @@ type ConfMap = Map CabalPV FilePath
 matchConf :: ConfMap -> CabalPV -> Either CabalPV FilePath
 matchConf = tryMaybe . flip Map.lookup
 
--- Read in all Gentoo .conf files from the current GHC version and
+-- Fold Gentoo .conf files from the current GHC version and
 -- create a Map
-readConf :: Verbosity -> ConfSubdir -> IO ConfMap
-readConf v conf_subdir = listConfFiles conf_subdir >>= foldM (addConf v) Map.empty
+foldConf :: Verbosity -> [FilePath] -> IO ConfMap
+foldConf v = foldM (addConf v) Map.empty
 
 -- cabal package text format
 -- "[InstalledPackageInfo {installedPackageId = Insta..."
@@ -280,7 +280,7 @@ brokenConfs v =
        let all_broken = ghc_pkg_brokens ++ orphan_broken ++ installed_but_not_registered
 
        vsay v "brokenConfs: reading '*.conf' files"
-       cnfs <- readConf v GentooConfs
+       cnfs <- listConfFiles GentooConfs >>= foldConf v
        vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
        let (known_broken, orphans) = partitionEithers $ map (matchConf cnfs) all_broken
        return (known_broken, orphan_confs ++ orphans)
@@ -312,8 +312,8 @@ getOrphanBroken = do
 -- due to unregistration bugs in old eclass.
 getNotRegistered :: Verbosity -> IO [CabalPV]
 getNotRegistered v = do
-    installed_confs  <- readConf v GentooConfs
-    registered_confs <- readConf v GHCConfs
+    installed_confs  <- listConfFiles GentooConfs >>= foldConf v
+    registered_confs <- listConfFiles GHCConfs >>= foldConf v
     return $ Map.keys installed_confs L.\\ Map.keys registered_confs
 
 -- -----------------------------------------------------------------------------
