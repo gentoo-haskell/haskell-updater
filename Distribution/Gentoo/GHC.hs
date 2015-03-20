@@ -34,7 +34,6 @@ import Data.Either(partitionEithers)
 import Data.Maybe
 import qualified Data.List as L
 import qualified Data.Map as Map
-import Data.Map(Map)
 import qualified Data.ByteString.Char8 as BS
 import System.FilePath((</>), takeExtension, pathSeparator)
 import System.Directory( canonicalizePath
@@ -119,7 +118,7 @@ tryMaybe f a = maybe (Left a) Right $ f a
 newtype CabalPV = CPV { unCPV :: String } -- serialized 'PackageIdentifier'
     deriving (Ord, Eq) -- for ConfMap, can be removed once ConfMap goes away
 
-type ConfMap = Map CabalPV FilePath
+type ConfMap = Map.Map CabalPV FilePath
 
 -- Attempt to match the provided broken package to one of the
 -- installed packages.
