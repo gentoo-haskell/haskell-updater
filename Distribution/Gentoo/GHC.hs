@@ -118,11 +118,15 @@ tryMaybe f a = maybe (Left a) Right $ f a
 newtype CabalPV = CPV { unCPV :: String } -- serialized 'PackageIdentifier'
     deriving (Ord, Eq) -- for ConfMap, can be removed once ConfMap goes away
 
-type ConfMap = Map.Map CabalPV FilePath
+-- Unique (normal) or multiple (broken) mapping
+type ConfMap = Map.Map CabalPV [FilePath]
+
+pushConf :: ConfMap -> CabalPV -> FilePath -> ConfMap
+pushConf m k v = Map.insertWith (++) k [v] m
 
 -- Attempt to match the provided broken package to one of the
 -- installed packages.
-matchConf :: ConfMap -> CabalPV -> Either CabalPV FilePath
+matchConf :: ConfMap -> CabalPV -> Either CabalPV [FilePath]
 matchConf = tryMaybe . flip Map.lookup
 
 -- Fold Gentoo .conf files from the current GHC version and
@@ -166,9 +170,9 @@ addConf v cmp conf = do
          , parse_as_cabal_package (BS.unpack cont)
          ) of
         (Just dn, _) -> do vsay v $ unwords [conf, "resolved as ghc package:", unCPV dn]
-                           return $ Map.insert dn conf cmp
+                           return $ pushConf cmp dn conf
         (_, Just dn) -> do vsay v $ unwords [conf, "resolved as cabal package:", unCPV dn]
-                           return $ Map.insert dn conf cmp
+                           return $ pushConf cmp dn conf
         -- empty files are created for
         -- phony packages like CABAL_CORE_LIB_GHC_PV
         -- and binary-only packages.
@@ -276,13 +280,24 @@ brokenConfs v =
                         , L.intercalate " " (map unCPV installed_but_not_registered)
                         ]
 
-       let all_broken = ghc_pkg_brokens ++ orphan_broken ++ installed_but_not_registered
+       registered_twice <- getRegisteredTwice v
+       vsay v $ unwords [ "checkPkgs: ghc .conf registered twice:"
+                        , show (length registered_twice)
+                        , "are registered twice:"
+                        , L.intercalate " " (map unCPV registered_twice)
+                        ]
+
+       let all_broken = concat [ ghc_pkg_brokens
+                               , orphan_broken
+                               , installed_but_not_registered
+                               , registered_twice
+                               ]
 
        vsay v "brokenConfs: reading '*.conf' files"
        cnfs <- listConfFiles GentooConfs >>= foldConf v
        vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
        let (known_broken, orphans) = partitionEithers $ map (matchConf cnfs) all_broken
-       return (known_broken, orphan_confs ++ orphans)
+       return (known_broken, orphan_confs ++ L.concat orphans)
 
 -- Return the closure of all packages affected by breakage
 -- in format of ["name-version", ... ]
@@ -314,6 +329,22 @@ getNotRegistered v = do
     installed_confs  <- listConfFiles GentooConfs >>= foldConf v
     registered_confs <- listConfFiles GHCConfs >>= foldConf v
     return $ Map.keys installed_confs L.\\ Map.keys registered_confs
+
+-- Return packages, that seem to have
+-- been installed more, than once.
+-- It usually happens this way:
+--  1. user installs dev-lang/ghc-7.8.4-r0 (comes with bundled transformers-3.0.0.0-ghc-7.8.4-{abi}.conf)
+--  2. user installs dev-haskell/transformers-0.4.3.0 (registered as transformers-0.4.3.0-{abi}.conf)
+--  3. user upgrade up to dev-lang/ghc-7.8.4-r4 (comes with bundled transformers-0.4.3.0-ghc-7.8.4-{abi}.conf)
+-- this way we have single package registered twice:
+--   transformers-0.4.3.0-ghc-7.8.4-{abi}.conf
+--   transformers-0.4.3.0-{abi}.conf
+-- It's is easy to fix just by reinstalling transformers.
+getRegisteredTwice :: Verbosity -> IO [CabalPV]
+getRegisteredTwice v = do
+    registered_confs <- listConfFiles GHCConfs >>= foldConf v
+    let registered_twice = Map.filter (\fs -> length fs > 1) registered_confs
+    return $ Map.keys registered_twice
 
 -- -----------------------------------------------------------------------------
 
