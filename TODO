@@ -1,7 +1,1 @@
 * Pretty colours in output?
-
-* Detect packages that are installed but not registered with GHC.
-  This is for cases where GHC was re-built but packages were not
-  properly re-registered.
-
-* Add an --info option to give us information on haskell-packages, etc.
