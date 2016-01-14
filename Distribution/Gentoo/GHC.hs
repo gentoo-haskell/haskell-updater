@@ -25,7 +25,7 @@ import Distribution.Gentoo.Packages
 import Distribution.Simple.Utils(rawSystemStdInOut)
 import Distribution.Verbosity(silent)
 import Distribution.Package(PackageIdentifier, packageId)
-import Distribution.InstalledPackageInfo(InstalledPackageInfo_)
+import Distribution.InstalledPackageInfo(InstalledPackageInfo)
 import Distribution.Text(display)
 
 -- Other imports
@@ -146,8 +146,7 @@ parse_as_cabal_package cont =
         [([],_)] -> Nothing
         rd       -> Just $ CPV $ display $ cfNm rd
   where
-    -- It's not InstalledPackageInfo, as it can't read the modules
-    cfNm :: [([InstalledPackageInfo_ String], String)] -> PackageIdentifier
+    cfNm :: [([InstalledPackageInfo], String)] -> PackageIdentifier
     cfNm = packageId . head . fst . head
 
 -- ghc package text format
