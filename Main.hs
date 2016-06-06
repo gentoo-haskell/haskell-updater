@@ -74,7 +74,7 @@ runAction rm action =
     case action of
         Help        -> help
         Version     -> version
-        Build ts    -> do systemInfo v rm
+        Build ts    -> do systemInfo v rm ts
                           ps <- allGetPackages v ts
                           if listOnly rm
                               then mapM_ (putStrLn . printPkg) ps
@@ -327,19 +327,21 @@ progInfo = do pName <- getProgName
                            , ""
                            , "Options:"]
 
-systemInfo :: Verbosity -> RunModifier -> IO ()
-systemInfo v rm = do ver    <- ghcVersion
-                     pName  <- getProgName
-                     let pVer = showVersion Paths.version
-                     pLoc   <- ghcLoc
-                     libDir <- ghcLibDir
-                     say v $ "Running " ++ pName ++ "-" ++ pVer ++ " using GHC " ++ ver
-                     say v $ "  * Executable: " ++ pLoc
-                     say v $ "  * Library directory: " ++ libDir
-                     say v $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
-                     unless (null (rawPMArgs rm)) $
-                         say v $ "  * PM auxiliary arguments: " ++ unwords (rawPMArgs rm)
-                     say v ""
+systemInfo :: Verbosity -> RunModifier -> Set.Set BuildTarget -> IO ()
+systemInfo v rm ts = do
+    ver    <- ghcVersion
+    pName  <- getProgName
+    let pVer = showVersion Paths.version
+    pLoc   <- ghcLoc
+    libDir <- ghcLibDir
+    say v $ "Running " ++ pName ++ "-" ++ pVer ++ " using GHC " ++ ver
+    say v $ "  * Executable: " ++ pLoc
+    say v $ "  * Library directory: " ++ libDir
+    say v $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
+    unless (null (rawPMArgs rm)) $
+        say v $ "  * PM auxiliary arguments: " ++ unwords (rawPMArgs rm)
+    say v $ "  * Mode: " ++ show (Set.toList ts)
+    say v ""
 
 -- -----------------------------------------------------------------------------
 -- Utility functions
