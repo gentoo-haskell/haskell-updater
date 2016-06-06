@@ -120,7 +120,6 @@ buildCmd pm fs raw_pm_flags ps = (pmCommand pm, fs' ++ ps')
 data PMFlag = PretendBuild
             | UpdateDeep
             | UpdateAsNeeded
-            | PMQuiet
               deriving (Eq, Ord, Show, Read)
 
 flagRep               :: PkgManager -> PMFlag -> Maybe String
@@ -134,7 +133,6 @@ portagePMFlag                :: PMFlag -> Maybe String
 portagePMFlag PretendBuild   = Just "--pretend"
 portagePMFlag UpdateDeep     = Just "--deep"
 portagePMFlag UpdateAsNeeded = Nothing
-portagePMFlag PMQuiet        = Just "--quiet"
 
 pkgcorePMFlag :: PMFlag -> Maybe String
 pkgcorePMFlag = portagePMFlag -- The options are the same for the 3
@@ -144,4 +142,3 @@ cavePMFlag                :: PMFlag -> Maybe String
 cavePMFlag PretendBuild   = Just "--no-execute"
 cavePMFlag UpdateDeep     = Just "--complete"
 cavePMFlag UpdateAsNeeded = Just "--lazy"
-cavePMFlag PMQuiet        = Nothing -- Just "--quiet"

@@ -220,8 +220,7 @@ argParser dPM (fls, nonoptions, unrecognized, errs)
       opts' = Set.fromList opts
       cmd = emptyElse (fromJust $ M.lookup defaultWithCmd withCmdMap) last cmds
       hasFlag = flip Set.member opts'
-      pmFlags = bool (PMQuiet:) id (hasFlag QuietFlag)
-                . bool id (PretendBuild:) (hasFlag Pretend)
+      pmFlags = bool id (PretendBuild:) (hasFlag Pretend)
                 . return $ bool UpdateDeep UpdateAsNeeded (hasFlag NoDeep)
       rm = RM { pkgmgr   = pm
               , flags    = pmFlags
