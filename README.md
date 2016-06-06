@@ -14,13 +14,8 @@ emerge -auvDN --keep-going @world
 has trouble figuring out how to update Haskell packages. Providing emerge with the full list of dev-haskell packages that have upgrades available can sometimes help:
 
 ``` shell
-eix-update
-emerge -av --oneshot --keep-going `eix --only-names --upgrade -C dev-haskell`
-haskell-updater
+emerge -av --oneshot --keep-going --with-bdeps=y @world
+haskell-updater --verbose-conflicts
 ```
 
-Unless `EAPI="6"` is approved sometimes we have sub-slot blockers (when updating ghc or some specific package there are a list of blockers) this issue could be solved via running
-
-``` shell
-haskell-updater -all -- dev-lang/ghc-7.6.2
-```
+Sometimes we have sub-slot blockers (when updating ghc or some specific package there are a list of blockers). Subslot blockers are a portage limitation (bug). To find solution use larger `--backtrack=` with `emerge` and `haskell-updater`.
