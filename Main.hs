@@ -309,10 +309,9 @@ progInfo :: IO String
 progInfo = do pName <- getProgName
               return $ usageInfo (header pName) options
   where
-    header pName = unlines [ pName ++ " -- Find and rebuild packages broken due to either:"
+    header pName = unlines [ pName ++ " -- Find and rebuild packages broken due to any of:"
                            , "            * GHC upgrade"
                            , "            * Haskell dependency upgrade"
-                           , "         Default action is to do both."
                            , ""
                            , "Usage: " ++ pName ++ " [Options [-- [PM options]]"
                            , ""
