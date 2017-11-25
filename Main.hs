@@ -12,12 +12,11 @@ module Main (main) where
 import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
-import Distribution.Gentoo.Util
 
-import           Control.Monad         (liftM, unless)
+import           Control.Monad         (unless)
 import           Data.Char             (toLower)
 import           Data.Either           (partitionEithers)
-import           Data.List             (foldl1', nub)
+import           Data.List             (foldl1')
 import           Data.Map              (Map)
 import qualified Data.Map              as M
 import           Data.Maybe            (fromJust)
@@ -46,13 +45,13 @@ main = do args <- getArgs
 
 data Action = Help
             | Version
-            | Build { targets :: Set.Set BuildTarget }
+            | Build { target :: BuildTarget }
               -- If anything is added here after Build, MAKE SURE YOU
               -- UPDATE combineActions or it won't always work!
               deriving (Eq, Ord, Show, Read)
 
 defaultAction :: Action
-defaultAction = Build $ Set.fromList [GhcUpgrade, DepCheck]
+defaultAction = Build OnlyInvalid
 
 -- Combine all the actions together.  If the list is empty, use the
 -- defaultAction.
@@ -67,15 +66,15 @@ combineActions       :: Action -> Action -> Action
 combineActions a1 a2 = case a1 `min` a2 of
                          Help    -> Help
                          Version -> Version
-                         Build{} -> Build $ targets a1 `Set.union` targets a2
+                         Build{} -> Build $ target a2 -- later options has priority
 
 runAction :: RunModifier -> Action -> IO a
 runAction rm action =
     case action of
         Help        -> help
         Version     -> version
-        Build ts    -> do systemInfo v rm ts
-                          ps <- allGetPackages v ts
+        Build t     -> do systemInfo v rm t
+                          ps <- getTargetPackages v t
                           if listOnly rm
                               then mapM_ (putStrLn . printPkg) ps
                               else buildPkgs rm ps
@@ -84,33 +83,32 @@ runAction rm action =
 -- -----------------------------------------------------------------------------
 -- The possible things to build.
 
-data BuildTarget = GhcUpgrade
-                 | DepCheck
-                 | AllInstalled
+data BuildTarget = OnlyInvalid
+                 | AllInstalled -- Rebuild every haskell package
                    deriving (Eq, Ord, Show, Read)
 
 getTargetPackages :: Verbosity -> BuildTarget -> IO [Package]
-getTargetPackages v target =
-    case target of
-        GhcUpgrade -> do say v "Searching for packages installed with a different version of GHC."
-                         say v ""
-                         pkgs <- oldGhcPkgs v
-                         pkgListPrintLn v "old" pkgs
-                         return pkgs
+getTargetPackages v t =
+    case t of
+        OnlyInvalid -> do say v "Searching for packages installed with a different version of GHC."
+                          say v ""
+                          old <- oldGhcPkgs v
+                          pkgListPrintLn v "old" old
+
+                          say v "Searching for Haskell libraries with broken dependencies."
+                          say v ""
+                          (broken, unknown_packages, unknown_files) <- brokenPkgs v
+                          printUnknownPackagesLn (map unCPV unknown_packages)
+                          printUnknownFilesLn unknown_files
+                          pkgListPrintLn v "broken" (notGHC broken)
+
+                          return $ Set.toList $ Set.fromList $ old ++ broken
 
         AllInstalled -> do say v "Searching for packages installed with the current version of GHC."
                            say v ""
                            pkgs <- allInstalledPackages
                            pkgListPrintLn v "installed" pkgs
                            return pkgs
-
-        DepCheck   -> do say v "Searching for Haskell libraries with broken dependencies."
-                         say v ""
-                         (pkgs, unknown_packages, unknown_files) <- brokenPkgs v
-                         printUnknownPackagesLn (map unCPV unknown_packages)
-                         printUnknownFilesLn unknown_files
-                         pkgListPrintLn v "broken" (notGHC pkgs)
-                         return pkgs
 
   where printUnknownPackagesLn [] = return ()
         printUnknownPackagesLn ps =
@@ -128,11 +126,6 @@ getTargetPackages v target =
                say v $ "        # ghc-pkg recache"
                say v $ "    It will likely need one more 'haskell-updater' run."
                say v ""
-
-allGetPackages :: Verbosity -> Set.Set BuildTarget -> IO [Package]
-allGetPackages v = liftM nub
-                   . concatMapM (getTargetPackages v)
-                   . Set.toList
 
 -- -----------------------------------------------------------------------------
 -- How to build packages.
@@ -186,8 +179,7 @@ data Flag = HelpFlag
           | VersionFlag
           | PM String
           | CustomPMFlag String
-          | Check
-          | Upgrade
+          | FixInvalid
           | RebuildAll
           | Pretend
           | NoDeep
@@ -236,9 +228,8 @@ argParser dPM (fls, nonoptions, unrecognized, errs)
 flagToAction             :: Flag -> Either Flag Action
 flagToAction HelpFlag    = Right Help
 flagToAction VersionFlag = Right Version
-flagToAction Check       = Right . Build $ Set.singleton DepCheck
-flagToAction Upgrade     = Right . Build $ Set.singleton GhcUpgrade
-flagToAction RebuildAll  = Right . Build $ Set.singleton AllInstalled
+flagToAction FixInvalid  = Right . Build $ OnlyInvalid
+flagToAction RebuildAll  = Right . Build $ AllInstalled
 flagToAction f           = Left f
 
 flagToPM                   :: Flag -> Either Flag PkgManager
@@ -264,9 +255,10 @@ isValidCmd = id
 
 options :: [OptDescr Flag]
 options =
-    [ Option ['c']      ["dep-check"]       (NoArg Check)
+    [ Option ['c']      ["dep-check"]       (NoArg FixInvalid)
       "Check dependencies of Haskell packages."
-    , Option ['u']      ["upgrade"]         (NoArg Upgrade)
+    -- deprecated alias for 'dep-check'
+    , Option ['u']      ["upgrade"]         (NoArg FixInvalid)
       "Rebuild Haskell packages after a GHC upgrade."
     , Option ['a']      ["all"]             (NoArg RebuildAll)
       "Rebuild all Haskell libraries built with current GHC."
@@ -327,8 +319,8 @@ progInfo = do pName <- getProgName
                            , ""
                            , "Options:"]
 
-systemInfo :: Verbosity -> RunModifier -> Set.Set BuildTarget -> IO ()
-systemInfo v rm ts = do
+systemInfo :: Verbosity -> RunModifier -> BuildTarget -> IO ()
+systemInfo v rm t = do
     ver    <- ghcVersion
     pName  <- getProgName
     let pVer = showVersion Paths.version
@@ -340,7 +332,7 @@ systemInfo v rm ts = do
     say v $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
     unless (null (rawPMArgs rm)) $
         say v $ "  * PM auxiliary arguments: " ++ unwords (rawPMArgs rm)
-    say v $ "  * Mode: " ++ show (Set.toList ts)
+    say v $ "  * Mode: " ++ show t
     say v ""
 
 -- -----------------------------------------------------------------------------
