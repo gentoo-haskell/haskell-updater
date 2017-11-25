@@ -89,8 +89,8 @@ data BuildTarget = GhcUpgrade
                  | AllInstalled
                    deriving (Eq, Ord, Show, Read)
 
-getPackages :: Verbosity -> BuildTarget -> IO [Package]
-getPackages v target =
+getTargetPackages :: Verbosity -> BuildTarget -> IO [Package]
+getTargetPackages v target =
     case target of
         GhcUpgrade -> do say v "Searching for packages installed with a different version of GHC."
                          say v ""
@@ -131,7 +131,7 @@ getPackages v target =
 
 allGetPackages :: Verbosity -> Set.Set BuildTarget -> IO [Package]
 allGetPackages v = liftM nub
-                   . concatMapM (getPackages v)
+                   . concatMapM (getTargetPackages v)
                    . Set.toList
 
 -- -----------------------------------------------------------------------------
