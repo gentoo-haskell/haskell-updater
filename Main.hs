@@ -124,7 +124,7 @@ getPackages v target =
                say v $ "It is strongly advised to remove orphans:"
                say v $ "    One of known sources of orphans is packages installed before 01 Jan 2015."
                say v $ "    If you know it's your case you can easily remove such files:"
-               say v $ "        # rm -v -- `qfile -o $(ghc --print-libdir)/package.conf.d/*.conf`"
+               say v $ "        # rm -v -- `qfile -o $(ghc --print-libdir)/package.conf.d/*.conf $(ghc --print-libdir)/gentoo/*.conf`"
                say v $ "        # ghc-pkg recache"
                say v $ "    It will likely need one more 'haskell-updater' run."
                say v ""
