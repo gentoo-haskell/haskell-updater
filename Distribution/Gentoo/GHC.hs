@@ -334,7 +334,7 @@ getNotRegistered v = do
 -- It usually happens this way:
 --  1. user installs dev-lang/ghc-7.8.4-r0 (comes with bundled transformers-3.0.0.0-ghc-7.8.4-{abi}.conf)
 --  2. user installs dev-haskell/transformers-0.4.3.0 (registered as transformers-0.4.3.0-{abi}.conf)
---  3. user upgrade up to dev-lang/ghc-7.8.4-r4 (comes with bundled transformers-0.4.3.0-ghc-7.8.4-{abi}.conf)
+--  3. user upgrades up to dev-lang/ghc-7.8.4-r4 (comes with bundled transformers-0.4.3.0-ghc-7.8.4-{abi}.conf)
 -- this way we have single package registered twice:
 --   transformers-0.4.3.0-ghc-7.8.4-{abi}.conf
 --   transformers-0.4.3.0-{abi}.conf
