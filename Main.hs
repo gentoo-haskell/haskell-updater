@@ -55,7 +55,7 @@ dumpHistory :: Verbosity -> DriverHistory -> IO ()
 dumpHistory v historyMap = do
     say v "Updater's past history:"
     CM.forM_ historyList $ \(n, entry) ->
-      say v $ unwords $ ["Pass", show n, " : "] ++ map printPkg (Set.toList entry)
+      say v $ unwords $ ["Pass", show n, ":"] ++ map printPkg (Set.toList entry)
   where historyList :: [(Int, Set.Set Package)]
         historyList = L.sort [ (n, entry) | (entry, n) <- M.toList historyMap ]
 
