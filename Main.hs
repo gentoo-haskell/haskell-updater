@@ -14,9 +14,9 @@ import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 
 import           Control.Monad         (unless)
+import qualified Control.Monad         as CM
 import           Data.Char             (toLower)
 import           Data.Either           (partitionEithers)
-import           Data.List             (foldl1')
 import           Data.Map              (Map)
 import qualified Data.Map              as M
 import           Data.Maybe            (fromJust)
@@ -31,55 +31,26 @@ import           System.Process        (rawSystem)
 
 import Output
 
--- -----------------------------------------------------------------------------
--- The overall program.
-
 main :: IO ()
 main = do args <- getArgs
           defPM <- defaultPM
           case parseArgs defPM args of
               Left err -> die err
-              Right a  -> uncurry runAction a
--- -----------------------------------------------------------------------------
--- The possible actions that haskell-updater can perform.
+              Right a  -> runAction a
 
-data Action = Help
-            | Version
-            | Build { target :: BuildTarget }
-              -- If anything is added here after Build, MAKE SURE YOU
-              -- UPDATE combineActions or it won't always work!
-              deriving (Eq, Ord, Show, Read)
-
-defaultAction :: Action
-defaultAction = Build OnlyInvalid
-
--- Combine all the actions together.  If the list is empty, use the
--- defaultAction.
-combineAllActions :: [Action] -> Action
-combineAllActions = emptyElse defaultAction (foldl1' combineActions)
-
--- Combine two actions together.  If they're both Build blah, merge
--- them; otherwise, pick the lower of the two (i.e. more important).
--- Note that it's safe (at the moment at least) to assume that when
--- the lower of one is a Build that they're both build.
-combineActions       :: Action -> Action -> Action
-combineActions a1 a2 = case a1 `min` a2 of
-                         Help    -> Help
-                         Version -> Version
-                         Build{} -> Build $ target a2 -- later options has priority
-
-runAction :: RunModifier -> Action -> IO a
-runAction rm action =
-    case action of
-        Help        -> help
-        Version     -> version
-        Build t     -> do systemInfo v rm t
+runAction :: RunModifier -> IO a
+runAction rm
+    | showHelp rm    = help
+    | showVer rm     = version
+    | otherwise      = do systemInfo v rm t
                           ps <- getTargetPackages v t
-                          if listOnly rm
-                              then mapM_ (putStrLn . printPkg) ps
-                              else buildPkgs rm ps
+                          CM.when (listOnly rm) $ do
+                              mapM_ (putStrLn . printPkg) ps
+                              success v "done!"
+                          _ <- buildPkgs rm ps
                           success v "done!"
   where v = verbosity rm
+        t = target rm
 -- -----------------------------------------------------------------------------
 -- The possible things to build.
 
@@ -136,6 +107,9 @@ data RunModifier = RM { pkgmgr   :: PkgManager
                       , rawPMArgs :: [String]
                       , verbosity :: Verbosity
                       , listOnly :: Bool
+                      , showHelp :: Bool
+                      , showVer :: Bool
+                      , target   :: BuildTarget
                       }
                    deriving (Eq, Ord, Show, Read)
 
@@ -189,21 +163,20 @@ data Flag = HelpFlag
           | Cmd String
           deriving (Eq, Ord, Show, Read)
 
-parseArgs :: PkgManager -> [String] -> Either String (RunModifier, Action)
+parseArgs :: PkgManager -> [String] -> Either String RunModifier
 parseArgs defPM args = argParser defPM $ getOpt' Permute options args
 
 argParser :: PkgManager
           -> ([Flag], [String], [String], [String])
-          -> Either String (RunModifier, Action)
+          -> Either String RunModifier
 argParser dPM (fls, nonoptions, unrecognized, errs)
     | (not . null) errs         = Left $ unwords $ "Errors in arguments:" : errs
     | (not . null) unrecognized = Left $ unwords $ "Unknown options:" : unrecognized
     | (not . null) bPms         = Left $ unwords $ "Unknown package managers:" : bPms
     | (not . null) bCmds        = Left $ unwords $ "Unknown action:" : bCmds
-    | otherwise                 = Right (rm, a)
+    | otherwise                 = Right rm
   where
-      (fls', as) = partitionBy flagToAction fls
-      a = combineAllActions as
+      (fls', ts) = partitionBy flagToTarget fls
       (fls'', pms) = partitionBy flagToPM fls'
       (bPms, pms') = partitionBy isValidPM pms
       (opts, cmds') = partitionBy flagToCmd fls''
@@ -223,14 +196,15 @@ argParser dPM (fls, nonoptions, unrecognized, errs)
                                 _ | hasFlag QuietFlag   -> Quiet
                                 _                       -> Normal
               , listOnly  = hasFlag ListOnlyFlag
+              , showVer   = hasFlag VersionFlag
+              , showHelp = hasFlag HelpFlag
+              , target   = last $ OnlyInvalid : ts
               }
 
-flagToAction             :: Flag -> Either Flag Action
-flagToAction HelpFlag    = Right Help
-flagToAction VersionFlag = Right Version
-flagToAction FixInvalid  = Right . Build $ OnlyInvalid
-flagToAction RebuildAll  = Right . Build $ AllInstalled
-flagToAction f           = Left f
+flagToTarget             :: Flag -> Either Flag BuildTarget
+flagToTarget FixInvalid  = Right OnlyInvalid
+flagToTarget RebuildAll  = Right AllInstalled
+flagToTarget f           = Left f
 
 flagToPM                   :: Flag -> Either Flag PkgManager
 flagToPM (CustomPMFlag pm) = Right $ stringToCustomPM pm
