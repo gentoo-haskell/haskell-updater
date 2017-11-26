@@ -42,17 +42,21 @@ runAction :: RunModifier -> IO a
 runAction rm
     | showHelp rm    = help
     | showVer rm     = version
-    | otherwise      = do systemInfo v rm t
-                          ps <- getTargetPackages v t
-                          CM.when (listOnly rm) $ do
-                              mapM_ (putStrLn . printPkg) ps
-                              success v "done!"
-                          _ <- buildPkgs rm ps
-                          success v "done!"
+    | otherwise      = runDriver rm
+
+runDriver :: RunModifier -> IO a
+runDriver rm = do
+    systemInfo v rm t
+    ps <- getTargetPackages v t
+    CM.when (listOnly rm) $ do
+        mapM_ (putStrLn . printPkg) ps
+        success v "done!"
+    CM.when (null ps) $
+        success (verbosity rm) "\nNothing to build!"
+    _ <- buildPkgs rm ps
+    success v "done!"
   where v = verbosity rm
         t = target rm
--- -----------------------------------------------------------------------------
--- The possible things to build.
 
 data BuildTarget = OnlyInvalid
                  | AllInstalled -- Rebuild every haskell package
@@ -113,7 +117,6 @@ data RunModifier = RM { pkgmgr   :: PkgManager
                       }
                    deriving (Eq, Ord, Show, Read)
 
--- At the moment, PrintAndRun is the only option available.
 data WithCmd = RunOnly
              | PrintOnly
              | PrintAndRun
@@ -141,7 +144,6 @@ runCommand     :: String -> [String] -> IO a
 runCommand cmd args = rawSystem cmd args >>= exitWith
 
 buildPkgs       :: RunModifier -> [Package] -> IO a
-buildPkgs rm  [] = success (verbosity rm) "\nNothing to build!"
 buildPkgs rm ps = runCmd (withCmd rm) cmd args
     where
       (cmd, args) = buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
