@@ -75,8 +75,8 @@ runDriver rm = do
             CM.when (null ps) $
                 success (verbosity rm) "\nNothing to build!"
             CM.when (Set.fromList ps `M.member` pastHistory) $ do
-                say v "Updater stuck in the loop and can't progress"
                 dumpHistory v pastHistory
+                die "Updater stuck in the loop and can't progress"
 
             exitCode <- buildPkgs rm ps
 
