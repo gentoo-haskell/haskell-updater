@@ -18,6 +18,7 @@ import qualified Control.Monad         as CM
 import           Data.Char             (toLower)
 import           Data.Either           (partitionEithers)
 import           Data.Map              (Map)
+import qualified Data.List             as L
 import qualified Data.Map              as M
 import           Data.Maybe            (fromJust)
 import qualified Data.Set              as Set
@@ -44,19 +45,48 @@ runAction rm
     | showVer rm     = version
     | otherwise      = runDriver rm
 
+-- set of packages to rebuild at pass number
+type DriverHistory = M.Map (Set.Set Package) Int
+
+initialHistory :: DriverHistory
+initialHistory = M.empty
+
+dumpHistory :: Verbosity -> DriverHistory -> IO ()
+dumpHistory v historyMap = do
+    say v "Updater's past history:"
+    CM.forM_ historyList $ \(n, entry) ->
+      say v $ unwords $ ["Pass", show n, " : "] ++ map printPkg (Set.toList entry)
+  where historyList :: [(Int, Set.Set Package)]
+        historyList = L.sort [ (n, entry) | (entry, n) <- M.toList historyMap ]
+
 runDriver :: RunModifier -> IO a
 runDriver rm = do
     systemInfo v rm t
-    ps <- getTargetPackages v t
-    CM.when (listOnly rm) $ do
-        mapM_ (putStrLn . printPkg) ps
-        success v "done!"
-    CM.when (null ps) $
-        success (verbosity rm) "\nNothing to build!"
-    _ <- buildPkgs rm ps
+    updaterPass 1 initialHistory
     success v "done!"
   where v = verbosity rm
         t = target rm
+        updaterPass :: Int -> DriverHistory -> IO ()
+        updaterPass n pastHistory = do
+            ps <- getTargetPackages v t
+            CM.when (listOnly rm) $ do
+                mapM_ (putStrLn . printPkg) ps
+                success v "done!"
+            CM.when (null ps) $
+                success (verbosity rm) "\nNothing to build!"
+            CM.when (Set.fromList ps `M.member` pastHistory) $ do
+                say v "Updater stuck in the loop and can't progress"
+                dumpHistory v pastHistory
+
+            exitCode <- buildPkgs rm ps
+
+            -- don't try rerun rebuilder for cases where there
+            -- is no chance to converge to empty set
+            CM.when (target rm == AllInstalled) $
+                exitWith exitCode
+
+            -- continue rebuild attempts
+            updaterPass (n + 1) $ M.insert (Set.fromList ps) n pastHistory
 
 data BuildTarget = OnlyInvalid
                  | AllInstalled -- Rebuild every haskell package
@@ -102,9 +132,7 @@ getTargetPackages v t =
                say v $ "    It will likely need one more 'haskell-updater' run."
                say v ""
 
--- -----------------------------------------------------------------------------
--- How to build packages.
-
+-- Full haskell-updater state
 data RunModifier = RM { pkgmgr   :: PkgManager
                       , flags    :: [PMFlag]
                       , withCmd  :: WithCmd
@@ -133,17 +161,17 @@ withCmdMap = M.fromList [ ("print", PrintOnly)
 defaultWithCmd :: String
 defaultWithCmd = "print-and-run"
 
-runCmd :: WithCmd -> String -> [String] -> IO a
+runCmd :: WithCmd -> String -> [String] -> IO ExitCode
 runCmd mode cmd args = case mode of
         RunOnly     ->                      runCommand cmd args
         PrintOnly   -> putStrLn cmd_line >> exitSuccess
         PrintAndRun -> putStrLn cmd_line >> runCommand cmd args
     where cmd_line = unwords (cmd:args)
 
-runCommand     :: String -> [String] -> IO a
-runCommand cmd args = rawSystem cmd args >>= exitWith
+runCommand     :: String -> [String] -> IO ExitCode
+runCommand cmd args = rawSystem cmd args
 
-buildPkgs       :: RunModifier -> [Package] -> IO a
+buildPkgs       :: RunModifier -> [Package] -> IO ExitCode
 buildPkgs rm ps = runCmd (withCmd rm) cmd args
     where
       (cmd, args) = buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
