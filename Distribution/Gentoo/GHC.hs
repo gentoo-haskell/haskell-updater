@@ -22,7 +22,7 @@ import Distribution.Gentoo.Util
 import Distribution.Gentoo.Packages
 
 -- Cabal imports
-import Distribution.Simple.Utils(rawSystemStdInOut)
+import qualified Distribution.Simple.Utils as DSU
 import Distribution.Verbosity(silent)
 import Distribution.Package(PackageIdentifier, packageId)
 import Distribution.InstalledPackageInfo(InstalledPackageInfo)
@@ -35,6 +35,7 @@ import Data.Maybe
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as BL8
 import System.FilePath((</>), takeExtension, pathSeparator)
 import System.Directory( canonicalizePath
                        , doesDirectoryExist
@@ -52,7 +53,8 @@ rawSysStdOutLine     :: FilePath -> [String] -> IO String
 rawSysStdOutLine app = liftM (head . lines) . rawCommand app
 
 rawCommand          :: FilePath -> [String] -> IO String
-rawCommand cmd args = do (out,_,_) <- rawSystemStdInOut silent  -- verbosity
+rawCommand cmd args = do (out,_,_) <- DSU.rawSystemStdInOut
+                                                        silent  -- verbosity
                                                         cmd     -- program loc
                                                         args    -- args
 #if MIN_VERSION_Cabal(1,18,0)
@@ -60,8 +62,17 @@ rawCommand cmd args = do (out,_,_) <- rawSystemStdInOut silent  -- verbosity
                                                         Nothing -- cabal-1.18+: new environment
 #endif /* MIN_VERSION_Cabal(1,18,0) */
                                                         Nothing -- input text and binary mode
+#if MIN_VERSION_Cabal(2,1,0)
+                                                        DSU.IODataModeBinary
+#else
                                                         False   -- is output in binary mode
+#endif /* MIN_VERSION_Cabal(2,1,0) */
+#if MIN_VERSION_Cabal(2,1,0)
+                         case out of
+                             ~(DSU.IODataBinary bs) -> return (BL8.unpack bs)
+#else
                          return out
+#endif /* MIN_VERSION_Cabal(2,1,0) */
 
 -- Get the first line of output from calling GHC with the given
 -- arguments.
