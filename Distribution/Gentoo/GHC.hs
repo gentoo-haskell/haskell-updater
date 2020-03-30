@@ -267,8 +267,10 @@ brokenPkgs v = brokenConfs v >>= checkPkgs v
 
 -- .conf files from broken packages of this GHC version
 -- Returns two lists:
--- '[CabalPV]' - list of broken cabal packages (output of 'ghc-pkg check')
--- '[FilePath]' - list of '.conf' files not attributed to gentoo packages
+-- '[CabalPV]' - list of broken cabal packages we could not resolve
+--               to Gentoo's .conf files
+-- '[FilePath]' - list of '.conf' files resolved from broken
+--                CabalPV reported by 'ghc-pkg check'
 brokenConfs :: Verbosity -> IO ([CabalPV], [FilePath])
 brokenConfs v =
     do vsay v "brokenConfs: getting broken output from 'ghc-pkg'"
