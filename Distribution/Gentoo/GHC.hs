@@ -127,7 +127,7 @@ tryMaybe     :: (a -> Maybe b) -> a -> Either a b
 tryMaybe f a = maybe (Left a) Right $ f a
 
 newtype CabalPV = CPV { unCPV :: String } -- serialized 'PackageIdentifier'
-    deriving (Ord, Eq) -- for ConfMap, can be removed once ConfMap goes away
+    deriving (Ord, Eq, Show)
 
 -- Unique (normal) or multiple (broken) mapping
 type ConfMap = Map.Map CabalPV [FilePath]
