@@ -280,21 +280,21 @@ brokenConfs v =
                         ]
 
        (orphan_broken, orphan_confs) <- getOrphanBroken
-       vsay v $ unwords [ "checkPkgs: ghc .conf orphans:"
+       vsay v $ unwords [ "brokenConfs: ghc .conf orphans:"
                         , show (length orphan_broken)
                         , "are orphan:"
                         , L.intercalate " " (map unCPV orphan_broken)
                         ]
 
        installed_but_not_registered <- getNotRegistered v
-       vsay v $ unwords [ "checkPkgs: ghc .conf not registered:"
+       vsay v $ unwords [ "brokenConfs: ghc .conf not registered:"
                         , show (length installed_but_not_registered)
                         , "are not registered:"
                         , L.intercalate " " (map unCPV installed_but_not_registered)
                         ]
 
        registered_twice <- getRegisteredTwice v
-       vsay v $ unwords [ "checkPkgs: ghc .conf registered twice:"
+       vsay v $ unwords [ "brokenConfs: ghc .conf registered twice:"
                         , show (length registered_twice)
                         , "are registered twice:"
                         , L.intercalate " " (map unCPV registered_twice)
