@@ -179,9 +179,9 @@ addConf v cmp conf = do
     case ( parse_as_ghc_package cont
          , parse_as_cabal_package (BS.unpack cont)
          ) of
-        (Just dn, _) -> do vsay v $ unwords [conf, "resolved as ghc package:", unCPV dn]
+        (Just dn, _) -> do vsay v $ unwords [conf, "resolved as ghc package:", show dn]
                            return $ pushConf cmp dn conf
-        (_, Just dn) -> do vsay v $ unwords [conf, "resolved as cabal package:", unCPV dn]
+        (_, Just dn) -> do vsay v $ unwords [conf, "resolved as cabal package:", show dn]
                            return $ pushConf cmp dn conf
         -- empty files are created for
         -- phony packages like CABAL_CORE_LIB_GHC_PV
