@@ -266,10 +266,13 @@ brokenPkgs :: Verbosity -> IO ([Package],[CabalPV],[FilePath])
 brokenPkgs v = brokenConfs v >>= checkPkgs v
 
 -- .conf files from broken packages of this GHC version
+-- Returns two lists:
+-- '[CabalPV]' - list of broken cabal packages (output of 'ghc-pkg check')
+-- '[FilePath]' - list of '.conf' files not attributed to gentoo packages
 brokenConfs :: Verbosity -> IO ([CabalPV], [FilePath])
 brokenConfs v =
     do vsay v "brokenConfs: getting broken output from 'ghc-pkg'"
-       ghc_pkg_brokens <- getBroken
+       ghc_pkg_brokens <- getBrokenGhcPkg
        vsay v $ unwords ["brokenConfs: resolving package names to gentoo equivalents."
                         , show (length ghc_pkg_brokens)
                         , "are broken:"
@@ -311,9 +314,9 @@ brokenConfs v =
 
 -- Return the closure of all packages affected by breakage
 -- in format of ["name-version", ... ]
-getBroken :: IO [CabalPV]
-getBroken = liftM (map CPV . words)
-            $ ghcPkgRawOut ["check", "--simple-output"]
+getBrokenGhcPkg :: IO [CabalPV]
+getBrokenGhcPkg = liftM (map CPV . words)
+                  $ ghcPkgRawOut ["check", "--simple-output"]
 
 getOrphanBroken :: IO ([CabalPV], [FilePath])
 getOrphanBroken = do
