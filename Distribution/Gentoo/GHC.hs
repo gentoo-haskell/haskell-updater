@@ -67,7 +67,9 @@ rawCommand cmd args = do (out,_,_) <- DSU.rawSystemStdInOut
 #else
                                                         False   -- is output in binary mode
 #endif /* MIN_VERSION_Cabal(2,1,0) */
-#if MIN_VERSION_Cabal(2,1,0)
+#if MIN_VERSION_Cabal(3,2,0)
+                         return (BL8.unpack out)
+#elif MIN_VERSION_Cabal(2,1,0)
                          case out of
                              ~(DSU.IODataBinary bs) -> return (BL8.unpack bs)
 #else
