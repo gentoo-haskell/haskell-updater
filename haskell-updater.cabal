@@ -1,6 +1,6 @@
-cabal-version:      3.0
+cabal-version:       3.0
 Name:                haskell-updater
-Homepage:            https://haskell.org/haskellwiki/Gentoo#haskell-updater
+Homepage:            https://github.com/gentoo-haskell/haskell-updater#readme
 Version:             1.3.2
 Synopsis:            Rebuild Haskell dependencies in Gentoo
 Description:         haskell-updater rebuilds Haskell packages on Gentoo
