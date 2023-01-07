@@ -87,7 +87,7 @@ getSlot cp = do ex <- doesFileExist sFile
     sFile = pkgPath cp </> "SLOT"
     -- EAPI=5 defines subslots
     split_slot_subslot = break (== '/')
-    parse = do fl <- BS.unpack `fmap` BS.readFile sFile
+    parse = do fl <- BS.unpack <$> BS.readFile sFile
                -- Don't want the trailing newline
                return $ listToMaybe $ map (fst . split_slot_subslot) $ lines fl
 
@@ -132,7 +132,7 @@ pathOf (Obj obj) = obj
 -- Searching predicates.
 
 hasContentMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
-hasContentMatching p = any p . map pathOf
+hasContentMatching p = any (p . pathOf)
 
 hasDirMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
 hasDirMatching p = hasContentMatching p . filter isDir
@@ -146,7 +146,7 @@ parseContents cp = do ex <- doesFileExist cFile
   where
     cFile = pkgPath cp </> "CONTENTS"
 
-    parse = do lns <- liftM BS.lines $ BS.readFile cFile
+    parse = do lns <- BS.lines <$> BS.readFile cFile
                return $ mapMaybe (parseCLine . BS.words) lns
 
     -- Use unwords of list rather than taking next element because of
@@ -172,7 +172,7 @@ parseContents cp = do ex <- doesFileExist cFile
 
 -- Find all the packages that contain given files.
 resolveFiles :: [FilePath] -> IO [(FilePath, Package)]
-resolveFiles fps = liftM expand $ forPkg grep
+resolveFiles fps = expand <$> forPkg grep
   where
     fps' = S.fromList $ map (Obj . BS.pack) fps
     expand pfs = [ (BS.unpack fn, pn)
@@ -186,8 +186,8 @@ resolveFiles fps = liftM expand $ forPkg grep
 forPkg :: (Package -> [Content] -> Maybe a) -> IO [a]
 forPkg p = do
     categories <- installedCats
-    liftM catMaybes $ do
-        (flip concatMapM) categories $ \cat -> do
+    catMaybes <$> do
+        flip concatMapM categories $ \cat -> do
             maybe_pkgs <- listDirectory (pkgDBDir </> cat)
             packages <- filterM (isPackage . (cat,)) maybe_pkgs
             forM packages $ \pkg -> do

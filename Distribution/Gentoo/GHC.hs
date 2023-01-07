@@ -51,7 +51,7 @@ import Output
 
 -- Get only the first line of output
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
-rawSysStdOutLine app = liftM (head . lines) . rawCommand app
+rawSysStdOutLine app = fmap (head . lines) . rawCommand app
 
 rawCommand          :: FilePath -> [String] -> IO String
 rawCommand cmd args = do (out,_,_) <- DSU.rawSystemStdInOut
@@ -85,11 +85,11 @@ ghcRawOut args = ghcLoc >>= flip rawSysStdOutLine args
 -- Cheat with using fromJust since we know that GHC must be in $PATH
 -- somewhere, probably /usr/bin.
 ghcLoc :: IO FilePath
-ghcLoc = liftM fromJust $ findExecutable "ghc"
+ghcLoc = fromJust <$> findExecutable "ghc"
 
 -- The version of GHC installed.
 ghcVersion :: IO String
-ghcVersion = liftM (dropWhile (not . isDigit)) $ ghcRawOut ["--version"]
+ghcVersion = dropWhile (not . isDigit) <$> ghcRawOut ["--version"]
 
 -- The directory where GHC has all its libraries, etc.
 ghcLibDir :: IO FilePath
@@ -101,7 +101,7 @@ ghcPkgRawOut args = ghcPkgLoc >>= flip rawCommand args
 -- Cheat with using fromJust since we know that ghc-pkg must be in $PATH
 -- somewhere, probably /usr/bin.
 ghcPkgLoc :: IO FilePath
-ghcPkgLoc = liftM fromJust $ findExecutable "ghc-pkg"
+ghcPkgLoc = fromJust <$> findExecutable "ghc-pkg"
 
 data ConfSubdir = GHCConfs
                 | GentooConfs
@@ -223,7 +223,7 @@ oldGhcPkgs v =
        -- It would be nice to do this, but we can't assume
        -- some crazy user hasn't deleted one of these dirs
        -- libFronts' <- filterM doesDirectoryExist libFronts
-       liftM notGHC $ checkLibDirs v thisGhc' libFronts
+       notGHC <$> checkLibDirs v thisGhc' libFronts
 
 -- Find packages installed by other versions of GHC in this possible
 -- library directory.
@@ -281,28 +281,28 @@ brokenConfs v =
        vsay v $ unwords ["brokenConfs: resolving Cabal package names to gentoo equivalents."
                         , show (length ghc_pkg_brokens)
                         , "Cabal packages are broken:"
-                        , L.intercalate " " (map unCPV ghc_pkg_brokens)
+                        , unwords $ map unCPV ghc_pkg_brokens
                         ]
 
        (orphan_broken, orphan_confs) <- getOrphanBroken
        vsay v $ unwords [ "brokenConfs: ghc .conf orphans:"
                         , show (length orphan_broken)
                         , "are orphan:"
-                        , L.intercalate " " (map unCPV orphan_broken)
+                        , unwords $ map unCPV orphan_broken
                         ]
 
        installed_but_not_registered <- getNotRegistered v
        vsay v $ unwords [ "brokenConfs: ghc .conf not registered:"
                         , show (length installed_but_not_registered)
                         , "are not registered:"
-                        , L.intercalate " " (map unCPV installed_but_not_registered)
+                        , unwords $ map unCPV installed_but_not_registered
                         ]
 
        registered_twice <- getRegisteredTwice v
        vsay v $ unwords [ "brokenConfs: ghc .conf registered twice:"
                         , show (length registered_twice)
                         , "are registered twice:"
-                        , L.intercalate " " (map unCPV registered_twice)
+                        , unwords $ map unCPV registered_twice
                         ]
 
        let all_broken = concat [ ghc_pkg_brokens
@@ -320,8 +320,8 @@ brokenConfs v =
 -- Return the closure of all packages affected by breakage
 -- in format of ["name-version", ... ]
 getBrokenGhcPkg :: IO [CabalPV]
-getBrokenGhcPkg = liftM (map CPV . words)
-                  $ ghcPkgRawOut ["check", "--simple-output"]
+getBrokenGhcPkg = map CPV . words
+                  <$> ghcPkgRawOut ["check", "--simple-output"]
 
 getOrphanBroken :: IO ([CabalPV], [FilePath])
 getOrphanBroken = do
@@ -332,9 +332,9 @@ getOrphanBroken = do
        confs_to_pkgs <- resolveFiles registered_confs
        let (conf_files, _conf_pkgs) = unzip confs_to_pkgs
            orphan_conf_files = registered_confs L.\\ conf_files
-       orphan_packages <- liftM catMaybes $
+       orphan_packages <- fmap catMaybes $
                               forM orphan_conf_files $
-                                  liftM parse_as_ghc_package . BS.readFile
+                                  fmap parse_as_ghc_package . BS.readFile
        return (orphan_packages, orphan_conf_files)
 
 -- Return packages, that seem to have
@@ -369,5 +369,5 @@ getRegisteredTwice v = do
 allInstalledPackages :: IO [Package]
 allInstalledPackages = do libDir <- ghcLibDir
                           let libDir' = BS.pack libDir
-                          liftM notGHC $ pkgsHaveContent
+                          fmap notGHC $ pkgsHaveContent
                                        $ hasDirMatching (==libDir')
