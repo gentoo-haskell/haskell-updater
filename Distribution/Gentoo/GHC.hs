@@ -39,7 +39,8 @@ import qualified Data.ByteString.Lazy.Char8 as BL8
 import System.FilePath((</>), takeExtension, pathSeparator)
 import System.Directory( canonicalizePath
                        , doesDirectoryExist
-                       , findExecutable)
+                       , findExecutable
+                       , listDirectory )
 import Control.Monad
 
 import Output
@@ -118,7 +119,7 @@ listConfFiles subdir = do
     let gDir = dir </> subdirToDirname subdir
     exists <- doesDirectoryExist gDir
     if exists
-        then do conts <- getDirectoryContents' gDir
+        then do conts <- listDirectory gDir
                 return $ map (gDir </>)
                     $ filter isConf conts
         else return []

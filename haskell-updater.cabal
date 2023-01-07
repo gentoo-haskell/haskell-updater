@@ -66,7 +66,7 @@ executable haskell-updater
     , bytestring
     , Cabal       >=1.8
     , containers
-    , directory
+    , directory   >=1.2.5.0
     , filepath
     , process
 

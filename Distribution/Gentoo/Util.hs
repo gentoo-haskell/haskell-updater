@@ -10,12 +10,10 @@ module Distribution.Gentoo.Util
        ( BSFilePath
        , concatMapM
        , breakAll
-       , getDirectoryContents'
        ) where
 
 import qualified Data.List as L
 import Data.ByteString.Char8(ByteString)
-import System.Directory(getDirectoryContents)
 import Control.Monad(liftM)
 
 -- Alias used to indicate that this ByteString represents a FilePath
@@ -26,9 +24,3 @@ concatMapM f = liftM concat . mapM f
 
 breakAll   :: (a -> Bool) -> [a] -> [[a]]
 breakAll p = L.groupBy (const (not . p))
-
--- Don't return . or ..
-getDirectoryContents'     :: FilePath -> IO [FilePath]
-getDirectoryContents' dir = do
-    is <- getDirectoryContents dir
-    return $ filter (`notElem` [".", ".."]) $ L.sort is

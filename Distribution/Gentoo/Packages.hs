@@ -25,7 +25,8 @@ import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8(ByteString)
 import qualified Data.Set as S
 import System.Directory( doesDirectoryExist
-                       , doesFileExist)
+                       , doesFileExist
+                       , listDirectory)
 import System.FilePath((</>))
 import Control.Monad
 
@@ -187,7 +188,7 @@ forPkg p = do
     categories <- installedCats
     liftM catMaybes $ do
         (flip concatMapM) categories $ \cat -> do
-            maybe_pkgs <- getDirectoryContents' (pkgDBDir </> cat)
+            maybe_pkgs <- listDirectory (pkgDBDir </> cat)
             packages <- filterM (isPackage . (cat,)) maybe_pkgs
             forM packages $ \pkg -> do
                 let cp = (cat, pkg)
@@ -222,4 +223,4 @@ isCat fp = do isD <- doesDirectoryExist (pkgDBDir </> fp)
 
 -- Return all Categories known in this system.
 installedCats :: IO [Category]
-installedCats = filterM isCat =<< getDirectoryContents' pkgDBDir
+installedCats = filterM isCat =<< listDirectory pkgDBDir
