@@ -12,7 +12,7 @@ Description:         haskell-updater rebuilds Haskell packages on Gentoo
                      dependencies.
 
 Category:            Distribution
-License:             GPL
+License:             GPL-3.0-or-later
 License-file:        COPYRIGHT
 Copyright:           (c) Ivan Lazar Miljenovic,
                          Lennart Kolmodin,
