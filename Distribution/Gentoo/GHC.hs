@@ -236,12 +236,17 @@ checkLibDirs v thisGhc libDirs =
 
     isValid dir = any (`isGhcLibDir` dir) libDirs
 
+#if MIN_VERSION_bytestring(1,11,1)
     -- Correct the path for hadrian-based installations
     -- See https://github.com/gentoo-haskell/haskell-updater/issues/20
     thisGhc' = if BS.isSuffixOf (BS.pack "/lib") thisGhc then BS.dropEnd 4 thisGhc else thisGhc
 
     -- Invalid if it's this GHC
     isInvalid fp = fp == thisGhc' || BS.isPrefixOf (thisGhc' `BS.snoc` pathSeparator) fp
+#else
+    -- Versions of GHC with old 'bytestring' can use the old behavior
+    isInvalid fp = fp == thisGhc || BS.isPrefixOf (thisGhc `BS.snoc` pathSeparator) fp
+#endif
 
 -- A valid GHC library directory starting at libdir has a name of
 -- "ghc", then a hyphen and then a version number.
