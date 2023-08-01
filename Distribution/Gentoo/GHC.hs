@@ -236,7 +236,7 @@ checkLibDirs v thisGhc libDirs =
 
     isValid dir = any (`isGhcLibDir` dir) libDirs
 
-#if MIN_VERSION_bytestring(1,11,1)
+#if MIN_VERSION_bytestring(0,11,1)
     -- Correct the path for hadrian-based installations
     -- See https://github.com/gentoo-haskell/haskell-updater/issues/20
     thisGhc' = if BS.isSuffixOf (BS.pack "/lib") thisGhc then BS.dropEnd 4 thisGhc else thisGhc
