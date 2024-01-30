@@ -32,7 +32,11 @@ extra-source-files:
   man/haskell-updater.1
   TODO
 
-tested-with:        GHC ==8.10.7 || ==9.0.2 || ==9.2.8 || ==9.4.5
+tested-with:
+    , GHC ==9.0.2
+    , GHC ==9.2.8
+    , GHC ==9.4.6
+    , GHC ==9.6.4
 
 source-repository head
   type:     git
