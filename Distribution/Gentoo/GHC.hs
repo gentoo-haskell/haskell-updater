@@ -24,7 +24,7 @@ import Distribution.Gentoo.Packages
 -- Cabal imports
 import qualified Distribution.Simple.Utils as DSU
 import Distribution.Verbosity(silent)
-import Distribution.Package(PackageIdentifier, packageId)
+import Distribution.Package(packageId)
 import Distribution.InstalledPackageInfo(InstalledPackageInfo)
 import Distribution.Text(display)
 
@@ -51,7 +51,13 @@ import Output
 
 -- Get only the first line of output
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
-rawSysStdOutLine app = fmap (head . lines) . rawCommand app
+rawSysStdOutLine app args = do
+    out <- rawCommand app args
+    case lines out of
+        [] -> error $ unwords
+            [ "rawSysStdOutLine: Empty output from rawCommand"
+            , show app, show args ]
+        (s:_) -> pure s
 
 rawCommand          :: FilePath -> [String] -> IO String
 rawCommand cmd args = do (out,_,_) <- DSU.rawSystemStdInOut
@@ -157,11 +163,9 @@ parse_as_cabal_package cont =
         -- ebuilds that have CABAL_CORE_LIB_GHC_PV set
         -- for this version of GHC will have a .conf
         -- file containing just []
-        [([],_)] -> Nothing
-        rd       -> Just $ CPV $ display $ cfNm rd
-  where
-    cfNm :: [([InstalledPackageInfo], String)] -> PackageIdentifier
-    cfNm = packageId . head . fst . head
+        (([] ,_):_) -> Nothing
+        ((i:_,_):_) -> Just $ CPV $ display
+            $ packageId (i :: InstalledPackageInfo)
 
 -- ghc package text format
 -- "name: zlib-conduit\n
