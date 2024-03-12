@@ -95,6 +95,7 @@ defaultPMFlags               :: PkgManager -> [String]
 defaultPMFlags Portage       = [ "--oneshot"
                                , "--keep-going"
                                , "--complete-graph"
+                               , "--usepkg=n"
                                ]
 defaultPMFlags PkgCore       = [ "--deep"
                                , "--oneshot"
