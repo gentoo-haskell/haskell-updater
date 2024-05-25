@@ -28,9 +28,11 @@ author:
 
 maintainer:         haskell@gentoo.org
 build-type:         Simple
-extra-source-files:
-  man/haskell-updater.1
-  TODO
+extra-doc-files:
+  , CHANGELOG.md
+  , man/haskell-updater.1
+  , README.md
+  , TODO
 
 tested-with:
     , GHC ==9.0.2
