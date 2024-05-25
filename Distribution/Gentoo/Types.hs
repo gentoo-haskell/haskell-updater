@@ -4,7 +4,6 @@ module Distribution.Gentoo.Types
   , WithCmd(..)
   , WithUserCmd
   , BuildTarget(..)
-  , Flag(..)
   ) where
 
 import Distribution.Gentoo.PkgManager.Types
@@ -33,18 +32,3 @@ type WithUserCmd = Either String WithCmd
 data BuildTarget = OnlyInvalid
                  | AllInstalled -- Rebuild every haskell package
                    deriving (Eq, Ord, Show, Read)
-
--- Command-line flags
-data Flag = HelpFlag
-          | VersionFlag
-          | PM String
-          | CustomPMFlag String
-          | FixInvalid
-          | RebuildAll
-          | Pretend
-          | NoDeep
-          | QuietFlag
-          | VerboseFlag
-          | ListOnlyFlag
-          | Cmd String
-          deriving (Eq, Ord, Show, Read)
