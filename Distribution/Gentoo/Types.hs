@@ -91,7 +91,7 @@ instance HasTargets ListModePkgs where
     targets (ListAll ps) = getPkgs ps
 
 instance HasTargets RAModePkgs where
-    targets (RAModeInvalid _ ps) = getPkgs ps
+    targets (RAModeInvalid ps _) = getPkgs ps
     targets (RAModeAll ps) = getPkgs ps
     targets (RAModeWorld ps) = getPkgs ps
 
