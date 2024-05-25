@@ -15,6 +15,7 @@ module Distribution.Gentoo.PkgManager
        , defaultPMName
        , nameOfPM
        , buildCmd
+       , buildAltCmd
        ) where
 
 import Distribution.Gentoo.Packages
@@ -105,6 +106,31 @@ buildCmd pm fs raw_pm_flags ps = (pmCommand pm, fs' ++ ps')
     where
       fs' = defaultPMFlags pm ++ mapMaybe (flagRep pm) fs ++ raw_pm_flags
       ps' = map printPkg ps
+
+-- | Alternative version of 'buildCmd' which uses experimental @emerge@
+--   invocation (using @--reinstall-atoms@). This is only to be used with the
+--   'Portage' 'PkgManager'.
+--
+--   The rationale is that by marking broken packages by using
+--   @--reinstall-atoms@, portage will pretend that they are not yet
+--   installed, thus forcing their reinstallation. @--update@ is
+--   used and all installed Haskell packages are targeted so that the entire
+--   Haskell environment is examined. This has a side-effect of skipping
+--   packages that are masked or otherwise unavailable while still rebuilding
+--   needed dependencies that have been broken.
+buildAltCmd
+    :: [PMFlag] -- ^ Basic flags
+    -> [String] -- ^ User-supplied flags
+    -> [Package] -- ^ List of packages to rebuild
+    -- | List of /all/ installed haskell packages ('Nothing' denotes a @world@ target)
+    -> Maybe [Package]
+    -> (String, [String])
+buildAltCmd fs rawPmFlags ps allPs =
+    (pmCommand Portage, fs' ++ reinst ++ rawPmFlags ++ allPs')
+  where
+    fs' = defaultPMFlags Portage ++ mapMaybe (flagRep Portage) fs ++ ["--update"]
+    reinst = ["--reinstall-atoms", unwords (map printPkg ps)]
+    allPs' = maybe ["@world"] (map printPkg) allPs
 
 -- -----------------------------------------------------------------------------
 

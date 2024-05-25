@@ -44,11 +44,41 @@ instance CmdlineOpt WithCmd where
     argInfo RunOnly = ("run", Nothing)
 
     optName _ = "action"
-
     optDescription _ =
         "Specify whether to run the PM command or just print it"
-
     optDefault _ = PrintAndRun
+
+instance CmdlineOpt BuildTarget where
+    argInfo OnlyInvalid = ("invalid", Just "broken Haskell packages")
+    argInfo AllInstalled = ("all", Just "all installed Haskell packages")
+    argInfo WorldTarget =
+        ( "world"
+        , Just $ "@world set (only valid with portage package\n"
+              ++ "manager and reinstall-atoms mode)"
+        )
+
+    optName _ = "target"
+    optDescription _ =
+        "Choose the type of packages for the PM to target"
+    optDefault _ = OnlyInvalid
+
+instance CmdlineOpt HackportMode where
+    argInfo BasicMode = ("basic", Just "classic haskell-updater behavior")
+    argInfo ListMode =
+        ( "list"
+        , Just $ "just print a list of packages for rebuild,\n"
+              ++ "one package per line"
+        )
+    argInfo ReinstallAtomsMode =
+        ( "reinstall-atoms"
+        , Just $ "experimental portage invocation using\n"
+              ++ "--reinstall-atoms (may be more useful in\n"
+              ++ "some situations)" )
+
+    optName _ = "mode"
+    optDescription _ =
+        "Mode of operation for haskell-updater"
+    optDefault _ = BasicMode
 
 argString :: CmdlineOpt a => a -> String
 argString = fst . argInfo
@@ -63,10 +93,13 @@ argHelp _ = unlines $ [mainDesc] ++ (args >>= argLine)
     argLine a = case (L.lookup a argFields, argDescription a) of
         (Nothing, _) -> []
         (Just s, Nothing) ->  [s]
-        (Just s, Just d) -> [s ++ padding s ++ " : " ++ d]
-    padding s =
-        let mx = maximum $ length . snd <$> argFields
-        in replicate (mx - length s) ' '
+        (Just s, Just d) -> case lines d of
+            (l:ls) -> [paddedFst s l] ++ (paddedRest <$> ls)
+            _ -> []
+    paddedFst s d =
+        s ++ replicate (padMax - length s) ' ' ++ " : " ++ d
+    paddedRest d = replicate (padMax + 3) ' ' ++ d
+    padMax = maximum $ length . snd <$> argFields
     argFields = (\a -> (a, showArg a)) <$> args
     showArg a = " * " ++ argString a ++ showDef a
     showDef a
@@ -103,10 +136,10 @@ defRunModifier defPM raw = RM
     , withCmd = optDefault $ Proxy @WithCmd
     , rawPMArgs = raw
     , verbosity = Normal
-    , listOnly = False
     , showHelp = False
     , showVer = False
     , target = OnlyInvalid
+    , mode = BasicMode
     }
 
 -- | Make sure there is at least one of 'UpdateAsNeeded' or 'UpdateDeep'
@@ -121,17 +154,7 @@ postProcessRM rm = rm { flags = flags' }
 
 options :: [OptDescr (RunModifier -> Either String RunModifier)]
 options =
-    [ Option ['c'] ["dep-check"]
-        (naUpdate $ \r -> r { target = OnlyInvalid })
-        "Check dependencies of Haskell packages."
-      -- deprecated alias for 'dep-check'
-    , Option ['u'] ["upgrade"]
-        (naUpdate $ \r -> r { target = OnlyInvalid })
-        "Rebuild Haskell packages after a GHC upgrade."
-    , Option ['a'] ["all"]
-        (naUpdate $ \r -> r { target = AllInstalled })
-        "Rebuild all Haskell libraries built with current GHC."
-    , Option ['P'] ["package-manager"]
+    [ Option ['P'] ["package-manager"]
       (ReqArg mkPM "PM")
         $ "Use package manager PM, where PM can be one of:\n"
               ++ pmList ++ defPM
@@ -145,15 +168,43 @@ options =
     , Option []    ["no-deep"]
         (naUpdate $ \r -> r { flags = UpdateAsNeeded : flags r } )
         "Don't pull deep dependencies (--deep with emerge)."
-    , Option ['l'] ["list-only"]
-        (naUpdate $ \r -> r { listOnly = True })
-        "Output only list of packages for rebuild. One package per line."
     , Option ['V'] ["version"]
         (naUpdate $ \r -> r { showVer = True })
         "Version information."
     , Option []    ["action"]
         (ReqArg (fromCmdline (\a r -> r { withCmd = a })) "action")
         (argHelp (Proxy @WithCmd))
+    , Option []    ["target"]
+        (ReqArg (fromCmdline (\a r -> r { target = a })) "target")
+        (argHelp (Proxy @BuildTarget))
+    , Option ['c'] ["dep-check"]
+        (naUpdate $ \r -> r { target = OnlyInvalid })
+        $ "alias for --target=" ++ argString OnlyInvalid
+      -- deprecated alias for 'dep-check'
+    , Option ['u'] ["upgrade"]
+        (naUpdate $ \r -> r { target = OnlyInvalid })
+        $ "alias for --target=" ++ argString OnlyInvalid
+    , Option ['a'] ["all"]
+        (naUpdate $ \r -> r { target = AllInstalled })
+        $ "alias for --target=" ++ argString AllInstalled
+    , Option ['W']    ["world"]
+        (naUpdate $ \r -> r
+            { pkgmgr = Portage
+            , target = WorldTarget
+            , mode = ReinstallAtomsMode
+            }
+        ) $      "alias for --package-manager=portage"
+         ++ " \\\n          --target=" ++ argString WorldTarget
+         ++ " \\\n          --mode=" ++ argString ReinstallAtomsMode
+    , Option []    ["mode"]
+        (ReqArg (fromCmdline (\a r -> r { mode = a })) "mode")
+        (argHelp (Proxy @HackportMode))
+    , Option ['l'] ["list-only"]
+        (naUpdate $ \r -> r { mode = ListMode })
+        $ "alias for --mode=" ++ argString ListMode
+    , Option ['R']    ["reinstall-atoms"]
+        (naUpdate $ \r -> r { mode = ReinstallAtomsMode })
+        $ "alias for --mode=" ++ argString ReinstallAtomsMode
     , Option ['q']      ["quiet"]
         (naUpdate $ \r -> r { verbosity = Quiet })
         "Print only fatal errors (to stderr)."
@@ -164,6 +215,7 @@ options =
         (naUpdate $ \r -> r { showHelp = True })
         "Print this help message."
     ]
+
   where
     naUpdate f = NoArg (pure . f)
 
@@ -181,3 +233,6 @@ options =
             \The default package manager is: " ++ defaultPMName ++ ",\n\
             \which can be overriden with the \"PACKAGE_MANAGER\"\n\
             \environment variable."
+
+
+
