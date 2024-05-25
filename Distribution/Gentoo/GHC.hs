@@ -109,20 +109,15 @@ ghcPkgRawOut args = ghcPkgLoc >>= flip rawCommand args
 ghcPkgLoc :: IO FilePath
 ghcPkgLoc = fromJust <$> findExecutable "ghc-pkg"
 
-data ConfSubdir = GHCConfs
-                | GentooConfs
-
-subdirToDirname :: ConfSubdir -> FilePath
-subdirToDirname subdir =
-    case subdir of
-        GHCConfs    -> "package.conf.d"
-        GentooConfs -> "gentoo"
+ghcConfsPath, gentooConfsPath :: FilePath
+ghcConfsPath = "package.conf.d"
+gentooConfsPath = "gentoo"
 
 -- Return the Gentoo .conf files found in this GHC libdir
-listConfFiles :: ConfSubdir -> IO [FilePath]
+listConfFiles :: FilePath -> IO [FilePath]
 listConfFiles subdir = do
     dir <- ghcLibDir
-    let gDir = dir </> subdirToDirname subdir
+    let gDir = dir </> subdir
     exists <- doesDirectoryExist gDir
     if exists
         then do conts <- listDirectory gDir
@@ -132,9 +127,6 @@ listConfFiles subdir = do
   where
     isConf file = takeExtension file == ".conf"
 
-tryMaybe     :: (a -> Maybe b) -> a -> Either a b
-tryMaybe f a = maybe (Left a) Right $ f a
-
 newtype CabalPV = CPV { unCPV :: String } -- serialized 'PackageIdentifier'
     deriving (Ord, Eq, Show)
 
@@ -143,11 +135,6 @@ type ConfMap = Map.Map CabalPV [FilePath]
 
 pushConf :: ConfMap -> CabalPV -> FilePath -> ConfMap
 pushConf m k v = Map.insertWith (++) k [v] m
-
--- Attempt to match the provided broken package to one of the
--- installed packages.
-matchConf :: ConfMap -> CabalPV -> Either CabalPV [FilePath]
-matchConf = tryMaybe . flip Map.lookup
 
 -- Fold Gentoo .conf files from the current GHC version and
 -- create a Map
@@ -325,10 +312,18 @@ brokenConfs v =
                                ]
 
        vsay v "brokenConfs: reading '*.conf' files"
-       cnfs <- listConfFiles GentooConfs >>= foldConf v
+       cnfs <- listConfFiles gentooConfsPath >>= foldConf v
        vsay v $ "brokenConfs: got " ++ show (Map.size cnfs) ++ " '*.conf' files"
        let (known_broken, orphans) = partitionEithers $ map (matchConf cnfs) all_broken
        return (known_broken, orphan_confs ++ L.concat orphans)
+  where
+    -- Attempt to match the provided broken package to one of the
+    -- installed packages.
+    matchConf :: ConfMap -> CabalPV -> Either CabalPV [FilePath]
+    matchConf cmp cpv =
+        case Map.lookup cpv cmp of
+            Just fps -> Right fps
+            Nothing -> Left cpv
 
 -- Return the closure of all packages affected by breakage
 -- in format of ["name-version", ... ]
@@ -341,7 +336,7 @@ getOrphanBroken = do
        -- Around Jan 2015 we have started to install
        -- all the .conf files in 'src_install()' phase.
        -- Here we pick orphan ones and notify user about it.
-       registered_confs <- listConfFiles GHCConfs
+       registered_confs <- listConfFiles ghcConfsPath
        confs_to_pkgs <- resolveFiles registered_confs
        let (conf_files, _conf_pkgs) = unzip confs_to_pkgs
            orphan_conf_files = registered_confs L.\\ conf_files
@@ -357,8 +352,8 @@ getOrphanBroken = do
 -- due to unregistration bugs in old eclass.
 getNotRegistered :: Verbosity -> IO [CabalPV]
 getNotRegistered v = do
-    installed_confs  <- listConfFiles GentooConfs >>= foldConf v
-    registered_confs <- listConfFiles GHCConfs >>= foldConf v
+    installed_confs  <- listConfFiles gentooConfsPath >>= foldConf v
+    registered_confs <- listConfFiles ghcConfsPath >>= foldConf v
     return $ Map.keys installed_confs L.\\ Map.keys registered_confs
 
 -- Return packages, that seem to have
@@ -373,7 +368,7 @@ getNotRegistered v = do
 -- It's is easy to fix just by reinstalling transformers.
 getRegisteredTwice :: Verbosity -> IO [CabalPV]
 getRegisteredTwice v = do
-    registered_confs <- listConfFiles GHCConfs >>= foldConf v
+    registered_confs <- listConfFiles ghcConfsPath >>= foldConf v
     let registered_twice = Map.filter (\fs -> length fs > 1) registered_confs
     return $ Map.keys registered_twice
 
