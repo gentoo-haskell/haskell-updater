@@ -24,16 +24,18 @@ import Distribution.Gentoo.Packages
 -- Cabal imports
 import qualified Distribution.Simple.Utils as DSU
 import Distribution.Verbosity(silent)
-import Distribution.Package(packageId)
-import Distribution.InstalledPackageInfo(InstalledPackageInfo)
+import Distribution.Package(mungedId)
+import Distribution.InstalledPackageInfo
+    (InstalledPackageInfo(sourceLibName), parseInstalledPackageInfo)
 import Distribution.Text(display)
+import Distribution.Types.LibraryName (LibraryName(..))
 
 -- Other imports
 import Data.Char(isDigit)
 import Data.Either(partitionEithers)
 import Data.Maybe
 import qualified Data.List as L
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BL8
 import System.FilePath((</>), takeExtension, pathSeparator)
@@ -133,9 +135,6 @@ newtype CabalPV = CPV { unCPV :: String } -- serialized 'PackageIdentifier'
 -- Unique (normal) or multiple (broken) mapping
 type ConfMap = Map.Map CabalPV [FilePath]
 
-pushConf :: ConfMap -> CabalPV -> FilePath -> ConfMap
-pushConf m k v = Map.insertWith (++) k [v] m
-
 -- Fold Gentoo .conf files from the current GHC version and
 -- create a Map
 foldConf :: Verbosity -> [FilePath] -> IO ConfMap
@@ -143,16 +142,11 @@ foldConf v = foldM (addConf v) Map.empty
 
 -- cabal package text format
 -- "[InstalledPackageInfo {installedPackageId = Insta..."
-parse_as_cabal_package :: String -> Maybe CabalPV
+parse_as_cabal_package :: BS.ByteString -> Maybe InstalledPackageInfo
 parse_as_cabal_package cont =
-    case reads cont of
-        []       -> Nothing
-        -- ebuilds that have CABAL_CORE_LIB_GHC_PV set
-        -- for this version of GHC will have a .conf
-        -- file containing just []
-        (([] ,_):_) -> Nothing
-        ((i:_,_):_) -> Just $ CPV $ display
-            $ packageId (i :: InstalledPackageInfo)
+    case parseInstalledPackageInfo cont of
+        Left _es -> Nothing
+        Right (_ws, ipi) -> Just ipi
 
 -- ghc package text format
 -- "name: zlib-conduit\n
@@ -166,28 +160,48 @@ parse_as_ghc_package cont =
             -> Just $ CPV $ BS.unpack bn ++ "-" ++ BS.unpack bv
         _   -> Nothing
 
--- Add this .conf file to the Map
+-- | Add this .conf file to the Map
+--
+--   NOTE: It is important that the 'CabalPV's that are added to the 'ConfMap'
+--   should be in their "munged form", which may be z-encoded
+--
+--   See:
+--     * <https://hackage.haskell.org/package/Cabal-syntax-3.12.0.0/docs/Distribution-Types-MungedPackageName.html>
+--     * <https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/compiler/symbol-names>
 addConf :: Verbosity -> ConfMap -> FilePath -> IO ConfMap
 addConf v cmp conf = do
-    cont <- BS.readFile conf
-    case ( parse_as_ghc_package cont
-         , parse_as_cabal_package (BS.unpack cont)
-         ) of
-        (Just dn, _) -> do vsay v $ unwords [conf, "resolved as ghc package:", show dn]
-                           return $ pushConf cmp dn conf
-        (_, Just dn) -> do vsay v $ unwords [conf, "resolved as cabal package:", show dn]
-                           return $ pushConf cmp dn conf
-        -- empty files are created for
-        -- phony packages like CABAL_CORE_LIB_GHC_PV
-        -- and binary-only packages.
-        _ | BS.null cont
-                     -> return cmp
-        _            -> do say v $ unwords [ "failed to parse"
-                                           , show conf
-                                           , ":"
-                                           , show (BS.take 30 cont)
-                                           ]
-                           return cmp
+    bs <- BS.readFile conf
+    case
+        ( BS.null bs
+        , parse_as_ghc_package bs
+        , parse_as_cabal_package bs
+        ) of
+            -- empty files are created for
+            -- phony packages like CABAL_CORE_LIB_GHC_PV
+            -- and binary-only packages.
+            (True, _      , _       ) -> pure cmp
+            -- 'parse_as_ghc_package' is more efficient, so try it first
+            (_   , Just dn, _       ) -> do
+                vsay v $ unwords [conf, "resolved as ghc package:", show dn]
+                pure $ pushConf cmp dn conf
+            -- 'parse_as_cabal_package' is more flexible, so use it as a fallback
+            (_   , _      , Just ipi) -> do
+                let cpv = toCPV ipi
+                vsay v $ unwords [conf, "resolved as cabal package:", show (cpv, ipi)]
+                pure $ pushConf cmp cpv conf
+            _                         -> do
+                say v $ unwords
+                    [ "failed to parse", show conf, ":", show (BS.take 30 bs)]
+                return cmp
+  where
+    pushConf :: ConfMap -> CabalPV -> FilePath -> ConfMap
+    pushConf m k fp = Map.insertWith (++) k [fp] m
+
+    -- 'MungedPackageId's get displayed using the z-encoded format, so are
+    -- compatible with ghc-pkg. This is important for resolving broken packages
+    -- (reported by ghc-pkg) to @.conf@ files!
+    toCPV :: InstalledPackageInfo -> CabalPV
+    toCPV = CPV . display . mungedId
 
 checkPkgs :: Verbosity
              -> ([CabalPV], [FilePath])
@@ -370,7 +384,35 @@ getRegisteredTwice :: Verbosity -> IO [CabalPV]
 getRegisteredTwice v = do
     registered_confs <- listConfFiles ghcConfsPath >>= foldConf v
     let registered_twice = Map.filter (\fs -> length fs > 1) registered_confs
-    return $ Map.keys registered_twice
+
+    -- Double check that all of the "duplicates" are main libraries, since
+    -- a package may also have one or more sub-libraries registered as
+    -- well.
+    rtMainLibs <- foldM
+        (\m k -> Map.alterF onlyMultipleMains k m)
+        registered_twice
+        (Map.keys registered_twice)
+
+    return $ Map.keys rtMainLibs
+  where
+    -- Filter out all but entries with multiple main libraries
+    onlyMultipleMains :: Maybe [FilePath] -> IO (Maybe [FilePath])
+    onlyMultipleMains (Just fps@(_:_)) = do
+        fps' <- filterM filterMain fps
+        -- Remove entries with one or less elements, since they are no longer
+        -- relevant to the getRegisteredTwice function
+        pure $ if length fps' <= 1 then Nothing else Just fps'
+    onlyMultipleMains _ = pure Nothing
+
+    -- Only keep conf files that correspond to main libraries. This runs
+    -- 'parse_as_cabal_package' to get
+    filterMain :: FilePath -> IO Bool
+    filterMain conf = do
+        bs <- BS.readFile conf
+        let ipi = parse_as_cabal_package bs
+        pure $ case sourceLibName <$> ipi of
+            Just LMainLibName -> True
+            _ -> False
 
 -- -----------------------------------------------------------------------------
 
