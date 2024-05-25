@@ -29,7 +29,7 @@ Experimental portage invocation
 ===============================
 
 If you run into errors where `haskell-updater` tries to reinstall a masked or
-unavailable package, try `haskell-updater --mode=reinstall-atoms` or 
+unavailable package, try `haskell-updater --mode=reinstall-atoms` or
 `haskell-updater --world`. If you find any bugs, report them to the [bug
 tracker](https://github.com/gentoo-haskell/haskell-updater/issues).
 
