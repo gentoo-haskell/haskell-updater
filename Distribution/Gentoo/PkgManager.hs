@@ -7,19 +7,18 @@
    This module defines ways to use different Gentoo package managers.
  -}
 module Distribution.Gentoo.PkgManager
-       ( PkgManager
-       , definedPMs
+       ( definedPMs
        , choosePM
        , stringToCustomPM
        , isValidPM
        , defaultPM
        , defaultPMName
        , nameOfPM
-       , PMFlag(..)
        , buildCmd
        ) where
 
 import Distribution.Gentoo.Packages
+import Distribution.Gentoo.PkgManager.Types
 
 import Data.Char(toLower)
 import Data.Maybe(mapMaybe, fromMaybe)
@@ -28,14 +27,6 @@ import Data.Map(Map)
 import System.Environment(getEnvironment)
 
 -- -----------------------------------------------------------------------------
-
--- | Defines the available Gentoo package managers.
-data PkgManager = Portage
-                | PkgCore
-                | Paludis
-                | InvalidPM String
-                | CustomPM String
-                  deriving (Eq, Ord, Show, Read)
 
 -- | The default package manager.  If the environment variable
 --   @PACKAGE_MANAGER@ exists, use that; otherwise default to
@@ -116,12 +107,6 @@ buildCmd pm fs raw_pm_flags ps = (pmCommand pm, fs' ++ ps')
       ps' = map printPkg ps
 
 -- -----------------------------------------------------------------------------
-
--- | Different optional flags to be passed to the PM.
-data PMFlag = PretendBuild
-            | UpdateDeep
-            | UpdateAsNeeded
-              deriving (Eq, Ord, Show, Read)
 
 flagRep               :: PkgManager -> PMFlag -> Maybe String
 flagRep Portage       = portagePMFlag

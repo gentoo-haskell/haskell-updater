@@ -61,6 +61,8 @@ executable haskell-updater
     Distribution.Gentoo.GHC
     Distribution.Gentoo.Packages
     Distribution.Gentoo.PkgManager
+    Distribution.Gentoo.PkgManager.Types
+    Distribution.Gentoo.Types
     Distribution.Gentoo.Util
     Output
     Paths_haskell_updater

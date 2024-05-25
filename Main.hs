@@ -12,6 +12,8 @@ module Main (main) where
 import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
+import Distribution.Gentoo.PkgManager.Types
+import Distribution.Gentoo.Types
 
 import           Control.Monad         (unless)
 import qualified Control.Monad         as CM
@@ -88,10 +90,6 @@ runDriver rm = do
             -- continue rebuild attempts
             updaterPass (n + 1) $ M.insert (Set.fromList ps) n pastHistory
 
-data BuildTarget = OnlyInvalid
-                 | AllInstalled -- Rebuild every haskell package
-                   deriving (Eq, Ord, Show, Read)
-
 getTargetPackages :: Verbosity -> BuildTarget -> IO [Package]
 getTargetPackages v t =
     case t of
@@ -132,26 +130,6 @@ getTargetPackages v t =
                say v $ "    It will likely need one more 'haskell-updater' run."
                say v ""
 
--- Full haskell-updater state
-data RunModifier = RM { pkgmgr   :: PkgManager
-                      , flags    :: [PMFlag]
-                      , withCmd  :: WithCmd
-                      , rawPMArgs :: [String]
-                      , verbosity :: Verbosity
-                      , listOnly :: Bool
-                      , showHelp :: Bool
-                      , showVer :: Bool
-                      , target   :: BuildTarget
-                      }
-                   deriving (Eq, Ord, Show, Read)
-
-data WithCmd = RunOnly
-             | PrintOnly
-             | PrintAndRun
-               deriving (Eq, Ord, Show, Read)
-
-type WithUserCmd = Either String WithCmd
-
 withCmdMap :: Map String WithCmd
 withCmdMap = M.fromList [ ("print", PrintOnly)
                         , ("run", RunOnly)
@@ -178,20 +156,6 @@ buildPkgs rm ps = runCmd (withCmd rm) cmd args
 
 -- -----------------------------------------------------------------------------
 -- Command-line flags
-
-data Flag = HelpFlag
-          | VersionFlag
-          | PM String
-          | CustomPMFlag String
-          | FixInvalid
-          | RebuildAll
-          | Pretend
-          | NoDeep
-          | QuietFlag
-          | VerboseFlag
-          | ListOnlyFlag
-          | Cmd String
-          deriving (Eq, Ord, Show, Read)
 
 parseArgs :: PkgManager -> [String] -> Either String RunModifier
 parseArgs defPM args = argParser defPM $ getOpt' Permute options args
