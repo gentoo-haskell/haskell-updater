@@ -1,15 +1,15 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Distribution.Gentoo.CmdLine
   ( parseArgs
   , options
   ) where
 
+import           Control.Monad         ((>=>))
 import           Data.Char             (toLower)
-import           Data.Either           (partitionEithers)
-import qualified Data.Map              as M
-import           Data.Map              (Map)
-import           Data.Maybe            (fromJust)
-import qualified Data.Set              as Set
+import qualified Data.List             as L
+import           Data.Proxy
 import           System.Console.GetOpt
 
 import Distribution.Gentoo.PkgManager
@@ -17,150 +17,167 @@ import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
 import Output
 
-withCmdMap :: Map String WithCmd
-withCmdMap = M.fromList [ ("print", PrintOnly)
-                        , ("run", RunOnly)
-                        , ("print-and-run", PrintAndRun)
-                        ]
-
-defaultWithCmd :: String
-defaultWithCmd = "print-and-run"
-
 -- -----------------------------------------------------------------------------
 -- Command-line flags
+
+-- | A class for multiple-choice options selected by an argument on the command
+--   line
+class (Eq a, Enum a, Bounded a) => CmdlineOpt a where
+    -- | Define the short name and an optional description for a constructor
+    argInfo :: a -> (String, Maybe String)
+    -- | Define the short name for the multiple-choice argument as a whole
+    --
+    --   e.g. @"action"@
+    optName :: Proxy a -> String
+    -- | Define the description for the multiple-choice argument as a whole
+    --
+    --   e.g. @"Specify whether to run the PM command or just print it"@
+    optDescription :: Proxy a -> String
+    -- | Define the default constructor for the multiple-choice argument
+    --
+    --   e.g. 'PrintAndRun'
+    optDefault :: Proxy a -> a
+
+instance CmdlineOpt WithCmd where
+    argInfo PrintAndRun = ("print-and-run", Nothing)
+    argInfo PrintOnly = ("print", Nothing)
+    argInfo RunOnly = ("run", Nothing)
+
+    optName _ = "action"
+
+    optDescription _ =
+        "Specify whether to run the PM command or just print it"
+
+    optDefault _ = PrintAndRun
+
+argString :: CmdlineOpt a => a -> String
+argString = fst . argInfo
+
+argDescription :: CmdlineOpt a => a -> Maybe String
+argDescription = snd . argInfo
+
+argHelp :: forall a. CmdlineOpt a => Proxy a -> String
+argHelp _ = unlines $ [mainDesc] ++ (args >>= argLine)
+  where
+    mainDesc = optDescription (Proxy @a)
+    argLine a = case (L.lookup a argFields, argDescription a) of
+        (Nothing, _) -> []
+        (Just s, Nothing) ->  [s]
+        (Just s, Just d) -> [s ++ padding s ++ " : " ++ d]
+    padding s =
+        let mx = maximum $ length . snd <$> argFields
+        in replicate (mx - length s) ' '
+    argFields = (\a -> (a, showArg a)) <$> args
+    showArg a = " * " ++ argString a ++ showDef a
+    showDef a
+        | optDefault (Proxy @a) == a = " (default)"
+        | otherwise = ""
+    args = [minBound :: a .. maxBound]
+
+fromCmdline
+    :: forall a. CmdlineOpt a
+    => (a -> RunModifier -> RunModifier)
+    -> String
+    -> RunModifier
+    -> Either String RunModifier
+fromCmdline update s rm =
+    case L.find (\a -> argString a == lowerS) args of
+        Nothing -> Left $ "Unknown " ++ name ++ ": " ++ lowerS
+        Just a -> Right $ update a rm
+  where
+    lowerS = map toLower s
+    name = optName $ Proxy @a
+    args = [minBound :: a .. maxBound]
 
 parseArgs :: PkgManager -> [String] -> Either String RunModifier
-parseArgs defPM args = argParser defPM $ getOpt' Permute options args
+parseArgs defPM args = case getOpt' Permute options args of
+    (_, _, _, errs@(_:_)) -> Left $ unwords $ "Errors in arguments:" : errs
+    (_, _, unk@(_:_), _) -> Left $ unwords $ "Unknown options:" : unk
+    (fs, raw, _, _) ->
+        postProcessRM <$> foldr (>=>) pure fs (defRunModifier defPM raw)
 
-argParser :: PkgManager
-          -> ([Flag], [String], [String], [String])
-          -> Either String RunModifier
-argParser dPM (fls, nonoptions, unrecognized, errs)
-    | (not . null) errs         = Left $ unwords $ "Errors in arguments:" : errs
-    | (not . null) unrecognized = Left $ unwords $ "Unknown options:" : unrecognized
-    | (not . null) bPms         = Left $ unwords $ "Unknown package managers:" : bPms
-    | (not . null) bCmds        = Left $ unwords $ "Unknown action:" : bCmds
-    | otherwise                 = Right rm
+defRunModifier :: PkgManager -> [String] -> RunModifier
+defRunModifier defPM raw = RM
+    { pkgmgr = defPM
+    , flags = []
+    , withCmd = optDefault $ Proxy @WithCmd
+    , rawPMArgs = raw
+    , verbosity = Normal
+    , listOnly = False
+    , showHelp = False
+    , showVer = False
+    , target = OnlyInvalid
+    }
+
+-- | Make sure there is at least one of 'UpdateAsNeeded' or 'UpdateDeep'
+--   in 'flags'.
+postProcessRM :: RunModifier -> RunModifier
+postProcessRM rm = rm { flags = flags' }
   where
-      (fls', ts) = partitionBy flagToTarget fls
-      (fls'', pms) = partitionBy flagToPM fls'
-      (bPms, pms') = partitionBy isValidPM pms
-      (opts, cmds') = partitionBy flagToCmd fls''
-      (bCmds, cmds) = partitionBy isValidCmd cmds'
-      pm = emptyElse dPM last pms'
-      opts' = Set.fromList opts
-      cmd = emptyElse (fromJust $ M.lookup defaultWithCmd withCmdMap) last cmds
-      hasFlag = flip Set.member opts'
-      pmFlags = bool id (PretendBuild:) (hasFlag Pretend)
-                . return $ bool UpdateDeep UpdateAsNeeded (hasFlag NoDeep)
-      rm = RM { pkgmgr   = pm
-              , flags    = pmFlags
-              , withCmd  = cmd
-              , rawPMArgs = nonoptions
-              , verbosity = case () of
-                                _ | hasFlag VerboseFlag -> Verbose
-                                _ | hasFlag QuietFlag   -> Quiet
-                                _                       -> Normal
-              , listOnly  = hasFlag ListOnlyFlag
-              , showVer   = hasFlag VersionFlag
-              , showHelp = hasFlag HelpFlag
-              , target   = last $ OnlyInvalid : ts
-              }
+    flags'
+        | or $ [(==UpdateAsNeeded), (==UpdateDeep)] <*> nubFlags = nubFlags
+        | otherwise = UpdateDeep : nubFlags
+    nubFlags = L.nub (flags rm)
 
--- Command-line flags
-data Flag = HelpFlag
-          | VersionFlag
-          | PM String
-          | CustomPMFlag String
-          | FixInvalid
-          | RebuildAll
-          | Pretend
-          | NoDeep
-          | QuietFlag
-          | VerboseFlag
-          | ListOnlyFlag
-          | Cmd String
-          deriving (Eq, Ord, Show, Read)
-
-flagToTarget             :: Flag -> Either Flag BuildTarget
-flagToTarget FixInvalid  = Right OnlyInvalid
-flagToTarget RebuildAll  = Right AllInstalled
-flagToTarget f           = Left f
-
-flagToPM                   :: Flag -> Either Flag PkgManager
-flagToPM (CustomPMFlag pm) = Right $ stringToCustomPM pm
-flagToPM (PM pm)           = Right $ choosePM pm
-flagToPM f                 = Left f
-
-flagToCmd :: Flag -> Either Flag WithUserCmd
-flagToCmd (Cmd cmd) = Right $ chooseCmd cmd
-flagToCmd f = Left f
-
-chooseCmd :: String -> WithUserCmd
-chooseCmd cmd = chooseCmd' $ map toLower cmd
-  where
-    chooseCmd' :: String -> WithUserCmd
-    chooseCmd' "run"   = Right RunOnly
-    chooseCmd' "print" = Right PrintOnly
-    chooseCmd' "print-and-run" = Right PrintAndRun
-    chooseCmd' c = Left c
-
-isValidCmd :: WithUserCmd -> Either String WithCmd
-isValidCmd = id
-
-options :: [OptDescr Flag]
+options :: [OptDescr (RunModifier -> Either String RunModifier)]
 options =
-    [ Option ['c']      ["dep-check"]       (NoArg FixInvalid)
-      "Check dependencies of Haskell packages."
-    -- deprecated alias for 'dep-check'
-    , Option ['u']      ["upgrade"]         (NoArg FixInvalid)
-      "Rebuild Haskell packages after a GHC upgrade."
-    , Option ['a']      ["all"]             (NoArg RebuildAll)
-      "Rebuild all Haskell libraries built with current GHC."
-    , Option ['P']      ["package-manager"] (ReqArg PM "PM")
-      $ "Use package manager PM, where PM can be one of:\n"
-            ++ pmList ++ defPM
-    , Option ['C']      ["custom-pm"]     (ReqArg CustomPMFlag "command")
-      "Use custom command as package manager;\n\
-      \ignores the --pretend and --no-deep flags."
-    , Option ['p']      ["pretend"]         (NoArg Pretend)
-      "Only pretend to build packages."
-    , Option []         ["no-deep"]         (NoArg NoDeep)
-      "Don't pull deep dependencies (--deep with emerge)."
-    , Option ['l'] ["list-only"]            (NoArg ListOnlyFlag)
-      "Output only list of packages for rebuild. One package per line."
-    , Option ['V']      ["version"]         (NoArg VersionFlag)
-      "Version information."
-    , Option []          ["action"]          (ReqArg Cmd "action")
-      $ "Specify whether to run the PM command or just print it\n"
-            ++ actionList ++ defAction
-    , Option ['q']      ["quiet"]           (NoArg QuietFlag)
-      "Print only fatal errors (to stderr)."
-    , Option ['v']      ["verbose"]         (NoArg VerboseFlag)
-      "Be more elaborate (to stderr)."
-    , Option ['h', '?'] ["help"]            (NoArg HelpFlag)
-      "Print this help message."
+    [ Option ['c'] ["dep-check"]
+        (naUpdate $ \r -> r { target = OnlyInvalid })
+        "Check dependencies of Haskell packages."
+      -- deprecated alias for 'dep-check'
+    , Option ['u'] ["upgrade"]
+        (naUpdate $ \r -> r { target = OnlyInvalid })
+        "Rebuild Haskell packages after a GHC upgrade."
+    , Option ['a'] ["all"]
+        (naUpdate $ \r -> r { target = AllInstalled })
+        "Rebuild all Haskell libraries built with current GHC."
+    , Option ['P'] ["package-manager"]
+      (ReqArg mkPM "PM")
+        $ "Use package manager PM, where PM can be one of:\n"
+              ++ pmList ++ defPM
+    , Option ['C'] ["custom-pm"]
+      (ReqArg (\s r -> pure $ r { pkgmgr = CustomPM s }) "command")
+        $ "Use custom command as package manager;\n"
+          ++ "ignores the --pretend and --no-deep flags."
+    , Option ['p'] ["pretend"]
+        (naUpdate $ \r -> r { flags = PretendBuild : flags r } )
+        "Only pretend to build packages."
+    , Option []    ["no-deep"]
+        (naUpdate $ \r -> r { flags = UpdateAsNeeded : flags r } )
+        "Don't pull deep dependencies (--deep with emerge)."
+    , Option ['l'] ["list-only"]
+        (naUpdate $ \r -> r { listOnly = True })
+        "Output only list of packages for rebuild. One package per line."
+    , Option ['V'] ["version"]
+        (naUpdate $ \r -> r { showVer = True })
+        "Version information."
+    , Option []    ["action"]
+        (ReqArg (fromCmdline (\a r -> r { withCmd = a })) "action")
+        (argHelp (Proxy @WithCmd))
+    , Option ['q']      ["quiet"]
+        (naUpdate $ \r -> r { verbosity = Quiet })
+        "Print only fatal errors (to stderr)."
+    , Option ['v']      ["verbose"]
+        (naUpdate $ \r -> r { verbosity = Verbose })
+        "Be more elaborate (to stderr)."
+    , Option ['h', '?'] ["help"]
+        (naUpdate $ \r -> r { showHelp = True })
+        "Print this help message."
     ]
-    where
-      pmList = unlines . map (" * " ++) $ definedPMs
-      defPM = "The last valid value of PM specified is chosen.\n\
-              \The default package manager is: " ++ defaultPMName ++ ",\n\
-              \which can be overriden with the \"PACKAGE_MANAGER\"\n\
-              \environment variable."
-      actionList = unlines . map (" * " ++) $ M.keys withCmdMap
-      defAction = "The last specified action is chosen.\n\
-                       \The default action is: " ++ defaultWithCmd
+  where
+    naUpdate f = NoArg (pure . f)
 
--- -----------------------------------------------------------------------------
--- Utility functions
+    -- This touches some legacy code so we need a custom handler for it
+    mkPM :: String -> RunModifier -> Either String RunModifier
+    mkPM s rm = case choosePM s of
+        InvalidPM pm -> Left $ "Unknown package manager: " ++ pm
+        Portage -> Right $ rm { pkgmgr = Portage }
+        Paludis -> Right $ rm { pkgmgr = Paludis }
+        PkgCore -> Right $ rm { pkgmgr = PkgCore }
+        CustomPM _ -> undefined
 
-bool       :: a -> a -> Bool -> a
-bool f t b = if b then t else f
-
-partitionBy   :: (a -> Either l r) -> [a] -> ([l], [r])
-partitionBy f = partitionEithers . map f
-
--- If the list is empty, return the provided value; otherwise use the function.
-emptyElse        :: b -> ([a] -> b) -> [a] -> b
-emptyElse e _ [] = e
-emptyElse _ f as = f as
+    pmList = unlines . map (" * " ++) $ definedPMs
+    defPM = "The last valid value of PM specified is chosen.\n\
+            \The default package manager is: " ++ defaultPMName ++ ",\n\
+            \which can be overriden with the \"PACKAGE_MANAGER\"\n\
+            \environment variable."

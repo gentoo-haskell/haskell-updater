@@ -22,10 +22,10 @@ data RunModifier = RM { pkgmgr   :: PkgManager
                       }
                    deriving (Eq, Ord, Show, Read)
 
-data WithCmd = RunOnly
+data WithCmd = PrintAndRun
              | PrintOnly
-             | PrintAndRun
-               deriving (Eq, Ord, Show, Read)
+             | RunOnly
+               deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 type WithUserCmd = Either String WithCmd
 
