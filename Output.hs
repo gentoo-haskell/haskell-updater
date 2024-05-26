@@ -13,6 +13,7 @@ module Output (
               , Verbosity(..)
               ) where
 
+import qualified Data.Set as Set
 import System.IO (hPutStrLn, stderr)
 
 import Distribution.Gentoo.Packages
@@ -42,11 +43,11 @@ printList :: Verbosity -> (a -> String) -> [a] -> IO ()
 printList v f = mapM_ (say v . (++) "  * " . f)
 
 -- Print a list of packages, with a description of what they are.
-pkgListPrintLn :: Verbosity -> String -> [Package] -> IO ()
+pkgListPrintLn :: Verbosity -> String -> Set.Set Package -> IO ()
 pkgListPrintLn v desc pkgs = do
       if null pkgs
         then say v $ unwords ["No", desc, "packages found!"]
         else do say v $ unwords ["Found the following"
                               , desc, "packages:"]
-                printList v printPkg pkgs
+                printList v printPkg (Set.toList pkgs)
       say v ""

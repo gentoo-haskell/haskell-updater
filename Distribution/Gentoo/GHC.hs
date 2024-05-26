@@ -36,6 +36,7 @@ import Data.Either(partitionEithers)
 import Data.Maybe
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BL8
 import System.FilePath((</>), takeExtension, pathSeparator)
@@ -208,7 +209,7 @@ checkPkgs :: Verbosity
              -> IO ([Package],[CabalPV],[FilePath])
 checkPkgs v (pns, gentoo_cnfs) = do
        files_to_pkgs <- resolveFiles gentoo_cnfs
-       let (gentoo_files, pkgs) = unzip files_to_pkgs
+       let (gentoo_files, pkgs) = unzip $ Set.toList files_to_pkgs
            orphan_gentoo_files = gentoo_cnfs L.\\ gentoo_files
        vsay v $ unwords [ "checkPkgs: searching for gentoo .conf orphans"
                         , show (length orphan_gentoo_files)
@@ -220,7 +221,7 @@ checkPkgs v (pns, gentoo_cnfs) = do
 -- -----------------------------------------------------------------------------
 
 -- Finding packages installed with other versions of GHC
-oldGhcPkgs :: Verbosity -> IO [Package]
+oldGhcPkgs :: Verbosity -> IO (Set.Set Package)
 oldGhcPkgs v =
     do thisGhc <- ghcLibDir
        vsay v $ "oldGhcPkgs ghc lib: " ++ show thisGhc
@@ -232,7 +233,7 @@ oldGhcPkgs v =
 
 -- Find packages installed by other versions of GHC in this possible
 -- library directory.
-checkLibDirs :: Verbosity -> BSFilePath -> [BSFilePath] -> IO [Package]
+checkLibDirs :: Verbosity -> BSFilePath -> [BSFilePath] -> IO (Set.Set Package)
 checkLibDirs v thisGhc libDirs =
     do vsay v $ "checkLibDir ghc libs: " ++ show (thisGhc, libDirs)
        pkgsHaveContent (hasDirMatching wanted)
@@ -352,7 +353,7 @@ getOrphanBroken = do
        -- Here we pick orphan ones and notify user about it.
        registered_confs <- listConfFiles ghcConfsPath
        confs_to_pkgs <- resolveFiles registered_confs
-       let (conf_files, _conf_pkgs) = unzip confs_to_pkgs
+       let (conf_files, _conf_pkgs) = unzip $ Set.toList confs_to_pkgs
            orphan_conf_files = registered_confs L.\\ conf_files
        orphan_packages <- fmap catMaybes $
                               forM orphan_conf_files $
@@ -416,7 +417,7 @@ getRegisteredTwice v = do
 
 -- -----------------------------------------------------------------------------
 
-allInstalledPackages :: IO [Package]
+allInstalledPackages :: IO (Set.Set Package)
 allInstalledPackages = do libDir <- ghcLibDir
                           let libDir' = BS.pack libDir
                           fmap notGHC $ pkgsHaveContent

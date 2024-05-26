@@ -25,6 +25,7 @@ import Data.Char(toLower)
 import Data.Maybe(mapMaybe, fromMaybe)
 import qualified Data.Map as M
 import Data.Map(Map)
+import qualified Data.Set as Set
 import System.Environment(getEnvironment)
 
 -- -----------------------------------------------------------------------------
@@ -101,11 +102,16 @@ defaultPMFlags Paludis       = [ "resolve"
 defaultPMFlags CustomPM{}    = []
 defaultPMFlags (InvalidPM _) = undefined
 
-buildCmd :: PkgManager -> [PMFlag] -> [String] -> [Package] -> (String, [String])
-buildCmd pm fs raw_pm_flags ps = (pmCommand pm, fs' ++ ps')
+buildCmd
+    :: PkgManager
+    -> [PMFlag]
+    -> [String]
+    -> Set.Set Package
+    -> (String, [String])
+buildCmd pm fs raw_pm_flags ps = (pmCommand pm, fs' <> Set.toList ps')
     where
       fs' = defaultPMFlags pm ++ mapMaybe (flagRep pm) fs ++ raw_pm_flags
-      ps' = map printPkg ps
+      ps' = Set.map printPkg ps
 
 -- | Alternative version of 'buildCmd' which uses experimental @emerge@
 --   invocation (using @--reinstall-atoms@). This is only to be used with the
@@ -121,16 +127,16 @@ buildCmd pm fs raw_pm_flags ps = (pmCommand pm, fs' ++ ps')
 buildAltCmd
     :: [PMFlag] -- ^ Basic flags
     -> [String] -- ^ User-supplied flags
-    -> [Package] -- ^ List of packages to rebuild
-    -- | List of /all/ installed haskell packages ('Nothing' denotes a @world@ target)
-    -> Maybe [Package]
+    -> Set.Set Package -- ^ Set of packages to rebuild
+    -- | Set of /all/ installed haskell packages ('Nothing' denotes a @world@ target)
+    -> Maybe (Set.Set Package)
     -> (String, [String])
 buildAltCmd fs rawPmFlags ps allPs =
-    (pmCommand Portage, fs' ++ reinst ++ rawPmFlags ++ allPs')
+    (pmCommand Portage, fs' ++ reinst ++ rawPmFlags ++ Set.toList allPs')
   where
     fs' = defaultPMFlags Portage ++ mapMaybe (flagRep Portage) fs ++ ["--update"]
-    reinst = ["--reinstall-atoms", unwords (map printPkg ps)]
-    allPs' = maybe ["@world"] (map printPkg) allPs
+    reinst = ["--reinstall-atoms", unwords (map printPkg (Set.toList ps))]
+    allPs' = maybe (Set.singleton "@world") (Set.map printPkg) allPs
 
 -- -----------------------------------------------------------------------------
 

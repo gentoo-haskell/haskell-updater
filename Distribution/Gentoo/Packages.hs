@@ -58,8 +58,8 @@ ghcPkg :: Package
 ghcPkg = Package "dev-lang" "ghc" Nothing
 
 -- Return all packages that are not a version of GHC.
-notGHC :: [Package] -> [Package]
-notGHC = filter (isNot ghcPkg)
+notGHC :: S.Set Package -> S.Set Package
+notGHC = S.filter (isNot ghcPkg)
   where
     isNot p1 = not . samePackageAs p1
 
@@ -171,8 +171,8 @@ parseContents cp = do ex <- doesFileExist cFile
 -- -----------------------------------------------------------------------------
 
 -- Find all the packages that contain given files.
-resolveFiles :: [FilePath] -> IO [(FilePath, Package)]
-resolveFiles fps = expand <$> forPkg grep
+resolveFiles :: [FilePath] -> IO (S.Set (FilePath, Package))
+resolveFiles fps = S.fromList . expand <$> forPkg grep
   where
     fps' = S.fromList $ map (Obj . BS.pack) fps
     expand pfs = [ (BS.unpack fn, pn)
@@ -183,7 +183,7 @@ resolveFiles fps = expand <$> forPkg grep
 
 -- | Run predecate 'p' for each installed package
 --   and gather all 'Just' values
-forPkg :: (Package -> [Content] -> Maybe a) -> IO [a]
+forPkg :: Ord a => (Package -> [Content] -> Maybe a) -> IO [a]
 forPkg p = do
     categories <- installedCats
     catMaybes <$> do
@@ -205,8 +205,8 @@ forPkg p = do
 -- Find which packages have Content information that matches the
 -- provided predicate; to be used with the searching predicates
 -- above.
-pkgsHaveContent   :: ([Content] -> Bool) -> IO [Package]
-pkgsHaveContent p = forPkg p'
+pkgsHaveContent   :: ([Content] -> Bool) -> IO (S.Set Package)
+pkgsHaveContent p = S.fromList <$> forPkg p'
     where p' pn cont = if p cont
                            then Just pn
                            else Nothing

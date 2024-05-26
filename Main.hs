@@ -95,13 +95,13 @@ runDriver rm = do
         alertDone = success (verbosity rm) "\nNothing to build!"
 
         continuePass
-            :: PackageList ts
+            :: PackageSet ts
             => (ts -> Either DefaultModePkgs RAModePkgs)
             -> Bool
             -> ts
             -> IO ()
         continuePass cnst allTarget ts = do
-            CM.when (Set.fromList (getPkgs ts) `M.member` pastHistory) $ do
+            CM.when (getPkgs ts `M.member` pastHistory) $ do
                 dumpHistory v pastHistory
                 die "Updater stuck in the loop and can't progress"
 
@@ -111,7 +111,7 @@ runDriver rm = do
             -- is no chance to converge to empty set
             CM.when allTarget $ exitWith exitCode
 
-            updaterPass (n + 1) $ M.insert (Set.fromList (getPkgs ts)) n pastHistory
+            updaterPass (n + 1) $ M.insert (getPkgs ts) n pastHistory
 
 getPackageState :: RunModifier -> IO PackageState
 getPackageState rm =
@@ -155,11 +155,12 @@ getPackageState rm =
         say v "Searching for Haskell libraries with broken dependencies."
         say v ""
         (broken, unknown_packages, unknown_files) <- brokenPkgs v
+        let broken' = Set.fromList broken
         printUnknownPackagesLn (map unCPV unknown_packages)
         printUnknownFilesLn unknown_files
-        pkgListPrintLn v "broken" (notGHC broken)
+        pkgListPrintLn v "broken" (notGHC broken')
 
-        return $ InvalidPkgs $ Set.toList $ Set.fromList $ old ++ broken
+        return $ InvalidPkgs $ old <> broken'
 
     getAll = do
         say v "Searching for packages installed with the current version of GHC."
@@ -168,7 +169,7 @@ getPackageState rm =
         pkgListPrintLn v "installed" pkgs
         return $ AllPkgs pkgs
 
-    checkForNull :: PackageList ts => (ts -> b) -> ts -> Maybe b
+    checkForNull :: PackageSet ts => (ts -> b) -> ts -> Maybe b
     checkForNull cnst l
         | null (getPkgs l) = Nothing
         | otherwise = Just (cnst l)

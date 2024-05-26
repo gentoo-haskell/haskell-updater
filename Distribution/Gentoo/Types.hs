@@ -12,8 +12,10 @@ module Distribution.Gentoo.Types
   , HasTargets(..)
   , InvalidPkgs(..)
   , AllPkgs(..)
-  , PackageList(..)
+  , PackageSet(..)
   ) where
+
+import qualified Data.Set as Set
 
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager.Types
@@ -75,7 +77,7 @@ data RAModePkgs
     deriving (Show, Eq, Ord)
 
 class HasTargets t where
-    targets :: t -> [Package]
+    targets :: t -> Set.Set Package
 
 instance HasTargets PackageState where
     targets (DefaultModeState ps) = targets ps
@@ -97,19 +99,19 @@ instance HasTargets RAModePkgs where
 
 instance HasTargets t => HasTargets (Maybe t) where
     targets (Just ps) = targets ps
-    targets Nothing = []
+    targets Nothing = Set.empty
 
-newtype InvalidPkgs = InvalidPkgs [Package]
+newtype InvalidPkgs = InvalidPkgs (Set.Set Package)
     deriving (Show, Eq, Ord)
 
-newtype AllPkgs = AllPkgs [Package]
+newtype AllPkgs = AllPkgs (Set.Set Package)
     deriving (Show, Eq, Ord)
 
-class PackageList t where
-    getPkgs :: t -> [Package]
+class PackageSet t where
+    getPkgs :: t -> Set.Set Package
 
-instance PackageList InvalidPkgs where
+instance PackageSet InvalidPkgs where
     getPkgs (InvalidPkgs ps) = ps
 
-instance PackageList AllPkgs where
+instance PackageSet AllPkgs where
     getPkgs (AllPkgs ps) = ps
