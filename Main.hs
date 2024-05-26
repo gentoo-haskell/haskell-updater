@@ -256,8 +256,8 @@ systemInfo v rm t m = do
     say v $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
     unless (null (rawPMArgs rm)) $
         say v $ "  * PM auxiliary arguments: " ++ unwords (rawPMArgs rm)
-    say v $ "  * Target: " ++ show t
-    say v $ "  * Mode: " ++ show m
+    say v $ "  * Target: " ++ argString t
+    say v $ "  * Mode: " ++ argString m
     say v ""
 
 -- -----------------------------------------------------------------------------

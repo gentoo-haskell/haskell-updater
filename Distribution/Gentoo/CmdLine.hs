@@ -4,6 +4,7 @@
 module Distribution.Gentoo.CmdLine
   ( parseArgs
   , options
+  , argString
   ) where
 
 import           Control.Monad         ((>=>))
