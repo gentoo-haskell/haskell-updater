@@ -74,7 +74,7 @@ runDriver rm = do
     updaterPass :: Int -> DriverHistory -> IO ()
     updaterPass n pastHistory = getPackageState rm >>= \case
         ListModeState m -> do
-            mapM_ (putStrLn . printPkg) (targets m)
+            mapM_ (putStrLn . printPkg) (targetPkgs m)
             success v "done!"
         DefaultModeState (Just (DefaultInvalid ts)) ->
             continuePass (Left . DefaultInvalid) False ts

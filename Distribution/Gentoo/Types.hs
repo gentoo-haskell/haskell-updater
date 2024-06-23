@@ -77,29 +77,29 @@ data RAModePkgs
     deriving (Show, Eq, Ord)
 
 class HasTargets t where
-    targets :: t -> Set.Set Package
+    targetPkgs :: t -> Set.Set Package
 
 instance HasTargets PackageState where
-    targets (DefaultModeState ps) = targets ps
-    targets (ListModeState ps) = targets ps
-    targets (RAModeState ps) = targets ps
+    targetPkgs (DefaultModeState ps) = targetPkgs ps
+    targetPkgs (ListModeState ps) = targetPkgs ps
+    targetPkgs (RAModeState ps) = targetPkgs ps
 
 instance HasTargets DefaultModePkgs where
-    targets (DefaultInvalid ps) = getPkgs ps
-    targets (DefaultAll ps) = getPkgs ps
+    targetPkgs (DefaultInvalid ps) = getPkgs ps
+    targetPkgs (DefaultAll ps) = getPkgs ps
 
 instance HasTargets ListModePkgs where
-    targets (ListInvalid ps) = getPkgs ps
-    targets (ListAll ps) = getPkgs ps
+    targetPkgs (ListInvalid ps) = getPkgs ps
+    targetPkgs (ListAll ps) = getPkgs ps
 
 instance HasTargets RAModePkgs where
-    targets (RAModeInvalid ps _) = getPkgs ps
-    targets (RAModeAll ps) = getPkgs ps
-    targets (RAModeWorld ps) = getPkgs ps
+    targetPkgs (RAModeInvalid ps _) = getPkgs ps
+    targetPkgs (RAModeAll ps) = getPkgs ps
+    targetPkgs (RAModeWorld ps) = getPkgs ps
 
 instance HasTargets t => HasTargets (Maybe t) where
-    targets (Just ps) = targets ps
-    targets Nothing = Set.empty
+    targetPkgs (Just ps) = targetPkgs ps
+    targetPkgs Nothing = Set.empty
 
 newtype InvalidPkgs = InvalidPkgs (Set.Set Package)
     deriving (Show, Eq, Ord)
