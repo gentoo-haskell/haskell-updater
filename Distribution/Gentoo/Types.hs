@@ -57,7 +57,7 @@ data HackportMode
 data PackageState
     = DefaultModeState (Maybe DefaultModePkgs)
     | ListModeState ListModePkgs
-    | RAModeState AllPkgs (Maybe RAModePkgs)
+    | RAModeState AllPkgs RAModePkgs
     deriving (Show, Eq, Ord)
 
 data DefaultModePkgs
@@ -82,10 +82,9 @@ class HasTargets t where
 instance HasTargets PackageState where
     targetPkgs (DefaultModeState ps) = targetPkgs ps
     targetPkgs (ListModeState ps) = targetPkgs ps
-    targetPkgs (RAModeState _ (Just (RAModeInvalid ps))) = getPkgs ps
-    targetPkgs (RAModeState ps (Just RAModeAll)) = getPkgs ps
-    targetPkgs (RAModeState _ (Just (RAModeWorld _))) = Set.empty
-    targetPkgs (RAModeState _ Nothing) = Set.empty
+    targetPkgs (RAModeState _ (RAModeInvalid ps)) = getPkgs ps
+    targetPkgs (RAModeState ps RAModeAll) = getPkgs ps
+    targetPkgs (RAModeState _ (RAModeWorld _)) = Set.empty
 
 instance HasTargets DefaultModePkgs where
     targetPkgs (DefaultInvalid ps) = getPkgs ps

@@ -21,8 +21,10 @@ import Distribution.Gentoo.Types
 
 import           Control.Monad         (unless)
 import qualified Control.Monad         as CM
+import           Data.Foldable         (toList)
 import qualified Data.List             as L
-import qualified Data.Map              as M
+import           Data.Sequence         (Seq, ViewR(..), viewr)
+import qualified Data.Sequence         as Seq
 import qualified Data.Set              as Set
 import           Data.Version          (showVersion)
 import qualified Paths_haskell_updater as Paths (version)
@@ -48,56 +50,59 @@ runAction rm
     | otherwise      = runDriver rm
 
 -- set of packages to rebuild at pass number
-type DriverHistory = M.Map (Set.Set Package) Int
+type DriverHistory = Seq (Set.Set Package, ExitCode)
+
+data TargetType
+    = InvalidTargets
+    | AllTargets
+    | UpdateTargets
 
 initialHistory :: DriverHistory
-initialHistory = M.empty
+initialHistory = Seq.empty
 
 dumpHistory :: Verbosity -> DriverHistory -> IO ()
-dumpHistory v historyMap = do
+dumpHistory v historySeq = do
     say v "Updater's past history:"
-    CM.forM_ historyList $ \(n, entry) ->
-      say v $ unwords $ ["Pass", show n, ":"] ++ map printPkg (Set.toList entry)
-  where historyList :: [(Int, Set.Set Package)]
-        historyList = L.sort [ (n, entry) | (entry, n) <- M.toList historyMap ]
+    CM.forM_ historyList $ \(n, entry, ec) ->
+      say v $ unwords $ ["Pass", show n, ":"] ++ map printPkg (Set.toList entry) ++ [show ec]
+  where historyList :: [(Int, Set.Set Package, ExitCode)]
+        historyList = L.sort [ (n, entry, ec) | ((entry, ec), n) <- zip (toList historySeq) [1..] ]
 
 runDriver :: RunModifier -> IO a
 runDriver rm = do
     systemInfo v rm t md
-    updaterPass 1 initialHistory
+    updaterPass initialHistory
     success v "done!"
   where
     v = verbosity rm
     t = target rm
     md = mode rm
 
-    updaterPass :: Int -> DriverHistory -> IO ()
-    updaterPass n pastHistory = getPackageState rm >>= \case
+    updaterPass :: DriverHistory -> IO ()
+    updaterPass pastHistory = getPackageState rm >>= \case
         ListModeState m -> do
             mapM_ (putStrLn . printPkg) (targetPkgs m)
             success v "done!"
         DefaultModeState (Just (DefaultInvalid ts)) ->
-            continuePass (Left . DefaultInvalid) False ts
+            continuePass (Left . DefaultInvalid) InvalidTargets ts
         DefaultModeState (Just (DefaultAll ts)) ->
-            continuePass (Left . DefaultAll) True ts
+            continuePass (Left . DefaultAll) AllTargets ts
         DefaultModeState Nothing -> alertDone
-        RAModeState allPs (Just (RAModeInvalid ts)) ->
+        RAModeState allPs (RAModeInvalid ts) ->
             continuePass
                 (\ps -> Right (RAModeInvalid ps, allPs))
-                False
+                UpdateTargets
                 ts
-        RAModeState allPs (Just RAModeAll) ->
+        RAModeState allPs RAModeAll ->
             continuePass
                 (\_ -> Right (RAModeAll, allPs))
-                True
+                AllTargets
                 ()
-        RAModeState allPs (Just (RAModeWorld ts)) ->
+        RAModeState allPs (RAModeWorld ts) ->
             continuePass
                 (\ps -> Right (RAModeWorld ps, allPs))
-                True
+                UpdateTargets
                 ts
-        RAModeState _ Nothing -> alertDone
-
 
       where
 
@@ -106,21 +111,35 @@ runDriver rm = do
         continuePass
             :: PackageSet ts
             => (ts -> Either DefaultModePkgs (RAModePkgs, AllPkgs))
-            -> Bool
+            -> TargetType
             -> ts
             -> IO ()
-        continuePass cnst allTarget ts = do
-            CM.when (getPkgs ts `M.member` pastHistory) $ do
-                dumpHistory v pastHistory
-                die "Updater stuck in the loop and can't progress"
+        continuePass cnst targetType ts = do
+            let next ec = updaterPass
+                    $ pastHistory <> Seq.singleton (getPkgs ts, ec)
 
-            exitCode <- buildPkgs rm (cnst ts)
+            case targetType of
+                InvalidTargets -> do
+                    CM.when (getPkgs ts `elem` map fst (toList pastHistory)) $ do
+                        dumpHistory v pastHistory
+                        die "Updater stuck in the loop and can't progress"
 
-            -- don't try rerun rebuilder for cases where there
-            -- is no chance to converge to empty set
-            CM.when allTarget $ exitWith exitCode
+                    exitCode <- buildPkgs rm (cnst ts)
 
-            updaterPass (n + 1) $ M.insert (getPkgs ts) n pastHistory
+                    next exitCode
+                AllTargets -> do
+                    exitCode <- buildPkgs rm (cnst ts)
+
+                    exitWith exitCode
+                UpdateTargets -> case viewr pastHistory of
+                    EmptyR -> buildPkgs rm (cnst ts) >>= next
+                    (_ :> (past, pastEC)) -> do
+                        case (getPkgs ts == past, pastEC) of
+                            (True, ExitFailure _) -> do
+                                dumpHistory v pastHistory
+                                die "Updater stuck in the loop and can't progress"
+                            (True, ExitSuccess) -> exitSuccess
+                            _ -> buildPkgs rm (cnst ts) >>= next
 
 getPackageState :: RunModifier -> IO PackageState
 getPackageState rm =
@@ -129,7 +148,7 @@ getPackageState rm =
         (ReinstallAtomsMode, WorldTarget, Portage) -> do
             is <- getInvalid
             allPs <- getAll
-            pure $ RAModeState allPs $ checkForNull RAModeWorld is
+            pure $ RAModeState allPs $ RAModeWorld is
         (_, WorldTarget, Portage) -> die
             "\"world\" target is only valid with reinstall-atoms mode"
         (ReinstallAtomsMode, WorldTarget, _) -> die
@@ -151,12 +170,10 @@ getPackageState rm =
         (ReinstallAtomsMode, OnlyInvalid, Portage) -> do
             is <- getInvalid
             allPs <- getAll
-            pure $ RAModeState allPs $ if null (getPkgs is)
-                then Nothing
-                else Just $ RAModeInvalid is
+            pure $ RAModeState allPs $ RAModeInvalid is
         (ReinstallAtomsMode, AllInstalled, Portage) -> do
             allPs <- getAll
-            pure $ RAModeState allPs $ Just RAModeAll
+            pure $ RAModeState allPs RAModeAll
         (ReinstallAtomsMode, _, _) -> die
             "reinstall-atoms mode is only valid with portage package manager"
   where
