@@ -81,13 +81,22 @@ runDriver rm = do
         DefaultModeState (Just (DefaultAll ts)) ->
             continuePass (Left . DefaultAll) True ts
         DefaultModeState Nothing -> alertDone
-        RAModeState (Just (RAModeInvalid ps ts)) ->
-            continuePass (Right . RAModeInvalid ps) False ts
-        RAModeState (Just (RAModeAll ts)) ->
-            continuePass (Right . RAModeAll) True ts
-        RAModeState (Just (RAModeWorld ts)) ->
-            continuePass (Right . RAModeWorld) True ts
-        RAModeState Nothing -> alertDone
+        RAModeState allPs (Just (RAModeInvalid ts)) ->
+            continuePass
+                (\ps -> Right (RAModeInvalid ps, allPs))
+                False
+                ts
+        RAModeState allPs (Just RAModeAll) ->
+            continuePass
+                (\_ -> Right (RAModeAll, allPs))
+                True
+                ()
+        RAModeState allPs (Just (RAModeWorld ts)) ->
+            continuePass
+                (\ps -> Right (RAModeWorld ps, allPs))
+                True
+                ts
+        RAModeState _ Nothing -> alertDone
 
 
       where
@@ -96,7 +105,7 @@ runDriver rm = do
 
         continuePass
             :: PackageSet ts
-            => (ts -> Either DefaultModePkgs RAModePkgs)
+            => (ts -> Either DefaultModePkgs (RAModePkgs, AllPkgs))
             -> Bool
             -> ts
             -> IO ()
@@ -117,8 +126,10 @@ getPackageState :: RunModifier -> IO PackageState
 getPackageState rm =
     case (mode rm, target rm, pkgmgr rm) of
         -- world target
-        (ReinstallAtomsMode, WorldTarget, Portage) ->
-            RAModeState . checkForNull RAModeWorld <$> getInvalid
+        (ReinstallAtomsMode, WorldTarget, Portage) -> do
+            is <- getInvalid
+            allPs <- getAll
+            pure $ RAModeState allPs $ checkForNull RAModeWorld is
         (_, WorldTarget, Portage) -> die
             "\"world\" target is only valid with reinstall-atoms mode"
         (ReinstallAtomsMode, WorldTarget, _) -> die
@@ -137,12 +148,15 @@ getPackageState rm =
         (BasicMode, AllInstalled, _) ->
             DefaultModeState . checkForNull DefaultAll <$> getAll
         -- reinstall-atoms mode
-        (ReinstallAtomsMode, OnlyInvalid, Portage) -> getInvalid >>= \is ->
-            RAModeState <$> if null (getPkgs is)
-                then pure Nothing
-                else Just . flip RAModeInvalid is <$> getAll
-        (ReinstallAtomsMode, AllInstalled, Portage) ->
-            RAModeState . checkForNull RAModeAll <$> getAll
+        (ReinstallAtomsMode, OnlyInvalid, Portage) -> do
+            is <- getInvalid
+            allPs <- getAll
+            pure $ RAModeState allPs $ if null (getPkgs is)
+                then Nothing
+                else Just $ RAModeInvalid is
+        (ReinstallAtomsMode, AllInstalled, Portage) -> do
+            allPs <- getAll
+            pure $ RAModeState allPs $ Just RAModeAll
         (ReinstallAtomsMode, _, _) -> die
             "reinstall-atoms mode is only valid with portage package manager"
   where
@@ -207,20 +221,14 @@ runCmd m cmd args = case m of
 runCommand     :: String -> [String] -> IO ExitCode
 runCommand cmd args = rawSystem cmd args
 
-buildPkgs :: RunModifier -> Either DefaultModePkgs RAModePkgs -> IO ExitCode
+buildPkgs :: RunModifier -> Either DefaultModePkgs (RAModePkgs, AllPkgs) -> IO ExitCode
 buildPkgs rm ts = runCmd (withCmd rm) cmd args
   where
     (cmd, args) = case ts of
-        Left (DefaultInvalid (InvalidPkgs ps)) ->
+        Left ps ->
             buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
-        Left (DefaultAll (AllPkgs ps)) ->
-            buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
-        Right (RAModeInvalid (AllPkgs allPs) (InvalidPkgs ps)) ->
-            buildAltCmd (flags rm) (rawPMArgs rm) ps (Just allPs)
-        Right (RAModeAll (AllPkgs allPs)) ->
-            buildAltCmd (flags rm) (rawPMArgs rm) allPs (Just allPs)
-        Right (RAModeWorld (InvalidPkgs ps)) ->
-            buildAltCmd (flags rm) (rawPMArgs rm) ps Nothing
+        Right (ps, allPkgs) ->
+            buildAltCmd (flags rm) (rawPMArgs rm) ps allPkgs
 
 -- -----------------------------------------------------------------------------
 -- Printing information.

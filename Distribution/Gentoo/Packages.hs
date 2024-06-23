@@ -9,7 +9,7 @@
    packages in Gentoo.
 -}
 module Distribution.Gentoo.Packages
-       ( Package
+       ( Package(..)
        , Content
        , notGHC
        , printPkg

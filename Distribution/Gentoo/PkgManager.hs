@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 {- |
    Module      : Distribution.Gentoo.PkgManager
    Description : Using package managers in Gentoo.
@@ -20,6 +22,7 @@ module Distribution.Gentoo.PkgManager
 
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager.Types
+import Distribution.Gentoo.Types
 
 import Data.Char(toLower)
 import Data.Maybe(mapMaybe, fromMaybe)
@@ -88,7 +91,6 @@ defaultPMFlags               :: PkgManager -> [String]
 defaultPMFlags Portage       = [ "--oneshot"
                                , "--keep-going"
                                , "--complete-graph"
-                               , "--usepkg=n"
                                ]
 defaultPMFlags PkgCore       = [ "--deep"
                                , "--oneshot"
@@ -106,12 +108,23 @@ buildCmd
     :: PkgManager
     -> [PMFlag]
     -> [String]
-    -> Set.Set Package
+    -> DefaultModePkgs
     -> (String, [String])
-buildCmd pm fs raw_pm_flags ps = (pmCommand pm, fs' <> Set.toList ps')
-    where
-      fs' = defaultPMFlags pm ++ mapMaybe (flagRep pm) fs ++ raw_pm_flags
-      ps' = Set.map printPkg ps
+buildCmd pm fs raw_pm_flags ps =
+    (  pmCommand pm
+    ,  defaultPMFlags pm
+    ++ mapMaybe (flagRep pm) fs
+    ++ raw_pm_flags
+    ++ rest
+    )
+  where
+    rest = case (pm, ps) of
+        (Portage, DefaultInvalid p) -> usepkgExclude p ++ targs p
+        (Portage, DefaultAll a) -> usepkgExclude a ++ targs a
+        (_, DefaultInvalid p) -> targs p
+        (_, DefaultAll a) -> targs a
+
+    targs p = printPkg <$> Set.toList (getPkgs p)
 
 -- | Alternative version of 'buildCmd' which uses experimental @emerge@
 --   invocation (using @--reinstall-atoms@). This is only to be used with the
@@ -127,16 +140,48 @@ buildCmd pm fs raw_pm_flags ps = (pmCommand pm, fs' <> Set.toList ps')
 buildAltCmd
     :: [PMFlag] -- ^ Basic flags
     -> [String] -- ^ User-supplied flags
-    -> Set.Set Package -- ^ Set of packages to rebuild
-    -- | Set of /all/ installed haskell packages ('Nothing' denotes a @world@ target)
-    -> Maybe (Set.Set Package)
+    -> RAModePkgs -- ^ Set of packages to rebuild
+    -- | 'True' denotes a @world@ target
+    -> AllPkgs
     -> (String, [String])
-buildAltCmd fs rawPmFlags ps allPs =
-    (pmCommand Portage, fs' ++ reinst ++ rawPmFlags ++ Set.toList allPs')
+buildAltCmd fs rawPmFlags raPS allPs =
+    (  pmCommand Portage
+    ,  defaultPMFlags Portage
+    ++ mapMaybe (flagRep Portage) fs
+    ++ ["--update"]
+    ++ rawPmFlags
+    ++ usepkgExclude allPs
+    ++ reinst
+    ++ targs
+    )
   where
-    fs' = defaultPMFlags Portage ++ mapMaybe (flagRep Portage) fs ++ ["--update"]
-    reinst = ["--reinstall-atoms", unwords (map printPkg (Set.toList ps))]
-    allPs' = maybe (Set.singleton "@world") (Set.map printPkg) allPs
+    (reinst, targs) =
+        let raArgs ps
+              | Set.null ps = []
+              | otherwise = ["--reinstall-atoms", unwords (printPkg <$> Set.toList ps)]
+        in case raPS of
+            RAModeInvalid p ->
+                (raArgs (getPkgs p), printPkg <$> Set.toList (getPkgs allPs))
+            RAModeAll ->
+                (raArgs (getPkgs allPs), printPkg <$> Set.toList (getPkgs allPs))
+            RAModeWorld p ->
+                (raArgs (getPkgs p), ["@world"])
+
+-- | Generate strings using portage's @--usepkg-exclude@ flag. This filters out
+--   dev-haskell/* packages which can be specified using a wildcard, in order
+--   to reduce the length of the emerge command a bit.
+usepkgExclude :: PackageSet t => t -> [String]
+usepkgExclude pkgs0
+    | Set.null pkgs = []
+    | otherwise = ["--usepkg-exclude", unwords ("dev-haskell/*" : filteredPkgs)]
+  where
+    filteredPkgs = mapMaybe
+        ( \case
+              Package "dev-haskell" _ _ -> Nothing
+              p -> Just $ printPkg p
+        )
+        (Set.toList pkgs)
+    pkgs = getPkgs pkgs0
 
 -- -----------------------------------------------------------------------------
 

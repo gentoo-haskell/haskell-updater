@@ -57,7 +57,7 @@ data HackportMode
 data PackageState
     = DefaultModeState (Maybe DefaultModePkgs)
     | ListModeState ListModePkgs
-    | RAModeState (Maybe RAModePkgs)
+    | RAModeState AllPkgs (Maybe RAModePkgs)
     deriving (Show, Eq, Ord)
 
 data DefaultModePkgs
@@ -71,8 +71,8 @@ data ListModePkgs
     deriving (Show, Eq, Ord)
 
 data RAModePkgs
-    = RAModeInvalid AllPkgs InvalidPkgs
-    | RAModeAll AllPkgs
+    = RAModeInvalid InvalidPkgs
+    | RAModeAll
     | RAModeWorld InvalidPkgs
     deriving (Show, Eq, Ord)
 
@@ -82,7 +82,10 @@ class HasTargets t where
 instance HasTargets PackageState where
     targetPkgs (DefaultModeState ps) = targetPkgs ps
     targetPkgs (ListModeState ps) = targetPkgs ps
-    targetPkgs (RAModeState ps) = targetPkgs ps
+    targetPkgs (RAModeState _ (Just (RAModeInvalid ps))) = getPkgs ps
+    targetPkgs (RAModeState ps (Just RAModeAll)) = getPkgs ps
+    targetPkgs (RAModeState _ (Just (RAModeWorld _))) = Set.empty
+    targetPkgs (RAModeState _ Nothing) = Set.empty
 
 instance HasTargets DefaultModePkgs where
     targetPkgs (DefaultInvalid ps) = getPkgs ps
@@ -91,11 +94,6 @@ instance HasTargets DefaultModePkgs where
 instance HasTargets ListModePkgs where
     targetPkgs (ListInvalid ps) = getPkgs ps
     targetPkgs (ListAll ps) = getPkgs ps
-
-instance HasTargets RAModePkgs where
-    targetPkgs (RAModeInvalid ps _) = getPkgs ps
-    targetPkgs (RAModeAll ps) = getPkgs ps
-    targetPkgs (RAModeWorld ps) = getPkgs ps
 
 instance HasTargets t => HasTargets (Maybe t) where
     targetPkgs (Just ps) = targetPkgs ps
@@ -115,3 +113,6 @@ instance PackageSet InvalidPkgs where
 
 instance PackageSet AllPkgs where
     getPkgs (AllPkgs ps) = ps
+
+instance PackageSet () where
+    getPkgs () = Set.empty
