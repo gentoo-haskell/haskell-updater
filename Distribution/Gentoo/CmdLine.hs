@@ -1,8 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Distribution.Gentoo.CmdLine
   ( parseArgs
+  , mkHUMode
   , options
   , argString
   ) where
@@ -17,6 +19,7 @@ import Distribution.Gentoo.CmdLine.Types
 import Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
+import qualified Distribution.Gentoo.Types.HUMode as Mode
 import Output
 
 -- -----------------------------------------------------------------------------
@@ -49,12 +52,74 @@ argHelp _ = unlines $ [mainDesc] ++ (args >>= argLine)
         | otherwise = ""
     args = [minBound :: a .. maxBound]
 
+parseArgs :: PkgManager -> RawPMArgs -> Either String (CmdLineArgs, RawPMArgs)
+parseArgs defPM args = case getOpt' Permute options args of
+    (_, _, _, errs@(_:_)) -> Left $ unwords $ "Errors in arguments:" : errs
+    (_, _, unk@(_:_), _) -> Left $ unwords $ "Unknown options:" : unk
+    (fs, raw, _, _) ->
+        (,raw) <$> foldr (>=>) pure fs (defCmdLineArgs defPM)
+
+mkHUMode :: CmdLineArgs -> RawPMArgs -> Either String Mode.HUMode
+mkHUMode cmdLine raw
+    | cmdLineHelp cmdLine = pure Mode.HelpMode
+    | cmdLineVersion cmdLine = pure Mode.VersionMode
+    | otherwise = fmap (Mode.RunMode runModifier)
+        $ go $ maybe
+            (cmdLinePkgManager cmdLine)
+            CustomPM
+            (cmdLineCustomPM cmdLine)
+  where
+    go :: PkgManager -> Either String Mode.PkgManager
+    go pkgMgr = case (pkgMgr, cmdLineMode cmdLine, cmdLineTarget cmdLine) of
+        (Portage, ReinstallAtomsMode, WorldTarget) -> pure
+            $ Mode.Portage $ Right $ Mode.ReinstallAtomsMode
+            $ Right $ Mode.WorldTarget
+        (Portage, _, WorldTarget) -> Left
+            "\"world\" target is only valid with reinstall-atoms mode"
+        (Portage, ReinstallAtomsMode, targ) -> pure
+            $ Mode.Portage $ Right $ Mode.ReinstallAtomsMode
+            $ Left $ convTarget targ
+        (_, ReinstallAtomsMode, WorldTarget) -> Left
+           "\"world\" target is only valid with portage package manager"
+        (_, ReinstallAtomsMode, _) -> Left $ unwords
+            ["\"world\" target is only valid with reinstall-atoms mode and portage"
+            , "package manager"]
+        (_, mode, targ) -> pure $ convPkgMgr pkgMgr mode targ
+
+    convPkgMgr :: PkgManager -> RunMode -> BuildTarget -> Mode.PkgManager
+    convPkgMgr Portage mode targ = Mode.Portage $ Left $ convMode mode targ
+    convPkgMgr Paludis mode targ = Mode.Paludis $ convMode mode targ
+    convPkgMgr PkgCore mode targ = Mode.PkgCore $ convMode mode targ
+    convPkgMgr (CustomPM pm) mode targ = Mode.CustomPM pm $ convMode mode targ
+    convPkgMgr _ _ _ = error "Undefined behavior in convPkgMgr"
+
+    convMode :: RunMode -> BuildTarget -> Mode.RunMode
+    convMode BasicMode targ = Mode.BasicMode (convTarget targ)
+    convMode ListMode targ = Mode.ListMode (convTarget targ)
+    convMode _ _ = error "Undefined behavior in convMode"
+
+    convTarget :: BuildTarget -> Mode.Target
+    convTarget OnlyInvalid = Mode.OnlyInvalid
+    convTarget AllInstalled = Mode.AllInstalled
+    convTarget _ = error "Undefined behavior in convTarget"
+
+    runModifier :: RunModifier
+    runModifier = RM
+        { flags = (if cmdLinePretend cmdLine then (PretendBuild:) else id)
+                    $ if cmdLineNoDeep cmdLine
+                        then [UpdateAsNeeded]
+                        else [UpdateDeep]
+        , withCmd = cmdLineAction cmdLine
+        , rawPMArgs = raw
+        , verbosity = cmdLineVerbosity cmdLine
+        }
+
 fromCmdline
     :: forall a. CmdlineOpt a
-    => (a -> RunModifier -> RunModifier)
+    => (a -> CmdLineArgs -> CmdLineArgs)
     -> String
-    -> RunModifier
-    -> Either String RunModifier
+    -> CmdLineArgs
+    -> Either String CmdLineArgs
 fromCmdline update s rm =
     case L.find (\a -> argString a == lowerS) args of
         Nothing -> Left $ "Unknown " ++ name ++ ": " ++ lowerS
@@ -64,97 +129,67 @@ fromCmdline update s rm =
     name = optName $ Proxy @a
     args = [minBound :: a .. maxBound]
 
-parseArgs :: PkgManager -> [String] -> Either String RunModifier
-parseArgs defPM args = case getOpt' Permute options args of
-    (_, _, _, errs@(_:_)) -> Left $ unwords $ "Errors in arguments:" : errs
-    (_, _, unk@(_:_), _) -> Left $ unwords $ "Unknown options:" : unk
-    (fs, raw, _, _) ->
-        postProcessRM <$> foldr (>=>) pure fs (defRunModifier defPM raw)
-
-defRunModifier :: PkgManager -> [String] -> RunModifier
-defRunModifier defPM raw = RM
-    { pkgmgr = defPM
-    , flags = []
-    , withCmd = optDefault $ Proxy @WithCmd
-    , rawPMArgs = raw
-    , verbosity = Normal
-    , showHelp = False
-    , showVer = False
-    , target = OnlyInvalid
-    , mode = BasicMode
-    }
-
--- | Make sure there is at least one of 'UpdateAsNeeded' or 'UpdateDeep'
---   in 'flags'.
-postProcessRM :: RunModifier -> RunModifier
-postProcessRM rm = rm { flags = flags' }
-  where
-    flags'
-        | or $ [(==UpdateAsNeeded), (==UpdateDeep)] <*> nubFlags = nubFlags
-        | otherwise = UpdateDeep : nubFlags
-    nubFlags = L.nub (flags rm)
-
-options :: [OptDescr (RunModifier -> Either String RunModifier)]
+options :: [OptDescr (CmdLineArgs -> Either String CmdLineArgs)]
 options =
     [ Option ['P'] ["package-manager"]
       (ReqArg mkPM "PM")
         $ "Use package manager PM, where PM can be one of:\n"
               ++ pmList ++ defPM
     , Option ['C'] ["custom-pm"]
-      (ReqArg (\s r -> pure $ r { pkgmgr = CustomPM s }) "command")
+      (ReqArg (\s c -> pure $ c { cmdLineCustomPM = Just s }) "command")
         $ "Use custom command as package manager;\n"
           ++ "ignores the --pretend and --no-deep flags."
     , Option ['p'] ["pretend"]
-        (naUpdate $ \r -> r { flags = PretendBuild : flags r } )
+        (naUpdate $ \c -> c { cmdLinePretend = True } )
         "Only pretend to build packages."
     , Option []    ["no-deep"]
-        (naUpdate $ \r -> r { flags = UpdateAsNeeded : flags r } )
+        (naUpdate $ \c -> c { cmdLineNoDeep = True } )
         "Don't pull deep dependencies (--deep with emerge)."
     , Option ['V'] ["version"]
-        (naUpdate $ \r -> r { showVer = True })
+        (naUpdate $ \c -> c { cmdLineVersion = True })
         "Version information."
     , Option []    ["action"]
-        (ReqArg (fromCmdline (\a r -> r { withCmd = a })) "action")
+        (ReqArg (fromCmdline (\a c -> c { cmdLineAction = a })) "action")
         (argHelp (Proxy @WithCmd))
     , Option []    ["target"]
-        (ReqArg (fromCmdline (\a r -> r { target = a })) "target")
+        (ReqArg (fromCmdline (\a c -> c { cmdLineTarget = a })) "target")
         (argHelp (Proxy @BuildTarget))
     , Option ['c'] ["dep-check"]
-        (naUpdate $ \r -> r { target = OnlyInvalid })
+        (naUpdate $ \c -> c { cmdLineTarget = OnlyInvalid })
         $ "alias for --target=" ++ argString OnlyInvalid
       -- deprecated alias for 'dep-check'
     , Option ['u'] ["upgrade"]
-        (naUpdate $ \r -> r { target = OnlyInvalid })
+        (naUpdate $ \c -> c { cmdLineTarget = OnlyInvalid })
         $ "alias for --target=" ++ argString OnlyInvalid
     , Option ['a'] ["all"]
-        (naUpdate $ \r -> r { target = AllInstalled })
+        (naUpdate $ \c -> c { cmdLineTarget = AllInstalled })
         $ "alias for --target=" ++ argString AllInstalled
     , Option ['W']    ["world"]
         (naUpdate $ \r -> r
-            { pkgmgr = Portage
-            , target = WorldTarget
-            , mode = ReinstallAtomsMode
+            { cmdLinePkgManager = Portage
+            , cmdLineTarget = WorldTarget
+            , cmdLineMode = ReinstallAtomsMode
             }
         ) $      "alias for --package-manager=portage"
          ++ " \\\n          --target=" ++ argString WorldTarget
          ++ " \\\n          --mode=" ++ argString ReinstallAtomsMode
     , Option []    ["mode"]
-        (ReqArg (fromCmdline (\a r -> r { mode = a })) "mode")
-        (argHelp (Proxy @HackportMode))
+        (ReqArg (fromCmdline (\a c -> c { cmdLineMode = a })) "mode")
+        (argHelp (Proxy @RunMode))
     , Option ['l'] ["list-only"]
-        (naUpdate $ \r -> r { mode = ListMode })
+        (naUpdate $ \c -> c { cmdLineMode = ListMode })
         $ "alias for --mode=" ++ argString ListMode
     , Option ['R']    ["reinstall-atoms"]
-        (naUpdate $ \r -> r { mode = ReinstallAtomsMode })
+        (naUpdate $ \c -> c { cmdLineMode = ReinstallAtomsMode })
         $ "alias for --mode=" ++ argString ReinstallAtomsMode
     , Option ['q']      ["quiet"]
-        (naUpdate $ \r -> r { verbosity = Quiet })
+        (naUpdate $ \c -> c { cmdLineVerbosity = Quiet })
         "Print only fatal errors (to stderr)."
     , Option ['v']      ["verbose"]
-        (naUpdate $ \r -> r { verbosity = Verbose })
+        (naUpdate $ \c -> c { cmdLineVerbosity = Verbose })
         "Be more elaborate (to stderr)."
     , Option ['h', '?'] ["help"]
-        (naUpdate $ \r -> r { showHelp = True })
+        (naUpdate $ \c -> c { cmdLineHelp = True })
         "Print this help message."
     ]
 
@@ -162,12 +197,12 @@ options =
     naUpdate f = NoArg (pure . f)
 
     -- This touches some legacy code so we need a custom handler for it
-    mkPM :: String -> RunModifier -> Either String RunModifier
-    mkPM s rm = case choosePM s of
+    mkPM :: String -> CmdLineArgs -> Either String CmdLineArgs
+    mkPM s c = case choosePM s of
         InvalidPM pm -> Left $ "Unknown package manager: " ++ pm
-        Portage -> Right $ rm { pkgmgr = Portage }
-        Paludis -> Right $ rm { pkgmgr = Paludis }
-        PkgCore -> Right $ rm { pkgmgr = PkgCore }
+        Portage -> Right $ c { cmdLinePkgManager = Portage }
+        Paludis -> Right $ c { cmdLinePkgManager = Paludis }
+        PkgCore -> Right $ c { cmdLinePkgManager = PkgCore }
         CustomPM _ -> undefined
 
     pmList = unlines . map (" * " ++) $ definedPMs

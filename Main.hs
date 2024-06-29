@@ -13,11 +13,12 @@
 module Main (main) where
 
 import Distribution.Gentoo.CmdLine
+import qualified Distribution.Gentoo.CmdLine.Types as CmdLine -- (CmdLineArgs, BuildTarget)
 import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
-import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
+import Distribution.Gentoo.Types.HUMode
 
 import           Control.Monad         (unless)
 import qualified Control.Monad         as CM
@@ -41,13 +42,15 @@ main = do args <- getArgs
           defPM <- defaultPM
           case parseArgs defPM args of
               Left err -> die err
-              Right a  -> runAction a
+              Right (cmdArgs, rawArgs)  -> runAction cmdArgs rawArgs
 
-runAction :: RunModifier -> IO a
-runAction rm
-    | showHelp rm    = help
-    | showVer rm     = version
-    | otherwise      = runDriver rm
+runAction :: CmdLine.CmdLineArgs -> RawPMArgs -> IO a
+runAction cmdArgs rawArgs = do
+    mode <- either die pure $ mkHUMode cmdArgs rawArgs
+    case mode of
+        HelpMode -> help
+        VersionMode -> version
+        RunMode rm pm -> runDriver rm pm rawArgs
 
 -- set of packages to rebuild at pass number
 type DriverHistory = Seq (Set.Set Package, ExitCode)
@@ -68,18 +71,19 @@ dumpHistory v historySeq = do
   where historyList :: [(Int, Set.Set Package, ExitCode)]
         historyList = L.sort [ (n, entry, ec) | ((entry, ec), n) <- zip (toList historySeq) [1..] ]
 
-runDriver :: RunModifier -> IO a
-runDriver rm = do
-    systemInfo v rm t md
+runDriver :: RunModifier
+    -> PkgManager
+    -> RawPMArgs
+    -> IO a
+runDriver rm pkgMgr rawArgs = do
+    systemInfo rm pkgMgr rawArgs
     updaterPass initialHistory
     success v "done!"
   where
     v = verbosity rm
-    t = target rm
-    md = mode rm
 
     updaterPass :: DriverHistory -> IO ()
-    updaterPass pastHistory = getPackageState rm >>= \case
+    updaterPass pastHistory = getPackageState v pkgMgr >>= \case
         ListModeState m -> do
             mapM_ (putStrLn . printPkg) (targetPkgs m)
             success v "done!"
@@ -124,58 +128,47 @@ runDriver rm = do
                         dumpHistory v pastHistory
                         die "Updater stuck in the loop and can't progress"
 
-                    exitCode <- buildPkgs rm (cnst ts)
+                    exitCode <- buildPkgs pkgMgr rm (cnst ts)
 
                     next exitCode
                 AllTargets -> do
-                    exitCode <- buildPkgs rm (cnst ts)
+                    exitCode <- buildPkgs pkgMgr rm (cnst ts)
 
                     exitWith exitCode
                 UpdateTargets -> case viewr pastHistory of
-                    EmptyR -> buildPkgs rm (cnst ts) >>= next
+                    EmptyR -> buildPkgs pkgMgr rm (cnst ts) >>= next
                     (_ :> (past, pastEC)) -> do
                         case (getPkgs ts == past, pastEC) of
                             (True, ExitFailure _) -> do
                                 dumpHistory v pastHistory
                                 die "Updater stuck in the loop and can't progress"
                             (True, ExitSuccess) -> exitSuccess
-                            _ -> buildPkgs rm (cnst ts) >>= next
+                            _ -> buildPkgs pkgMgr rm (cnst ts) >>= next
 
-getPackageState :: RunModifier -> IO PackageState
-getPackageState rm =
-    case (mode rm, target rm, pkgmgr rm) of
-        -- world target
-        (ReinstallAtomsMode, WorldTarget, Portage) -> do
-            is <- getInvalid
-            allPs <- getAll
-            pure $ RAModeState allPs $ RAModeWorld is
-        (_, WorldTarget, Portage) -> die
-            "\"world\" target is only valid with reinstall-atoms mode"
-        (ReinstallAtomsMode, WorldTarget, _) -> die
-            "\"world\" target is only valid with portage package manager"
-        (_, WorldTarget, _) -> die $ unwords
-            ["\"world\" target is only valid with reinstall-atoms mode and portage"
-            , "package manager"]
-        -- list mode
-        (ListMode, OnlyInvalid, _) ->
-            ListModeState . ListInvalid <$> getInvalid
-        (ListMode, AllInstalled, _) ->
-            ListModeState . ListAll <$> getAll
-        -- default mode
-        (BasicMode, OnlyInvalid, _) ->
-            DefaultModeState . checkForNull DefaultInvalid <$> getInvalid
-        (BasicMode, AllInstalled, _) ->
-            DefaultModeState . checkForNull DefaultAll <$> getAll
-        -- reinstall-atoms mode
-        (ReinstallAtomsMode, OnlyInvalid, Portage) -> do
-            is <- getInvalid
-            allPs <- getAll
-            pure $ RAModeState allPs $ RAModeInvalid is
-        (ReinstallAtomsMode, AllInstalled, Portage) -> do
-            allPs <- getAll
-            pure $ RAModeState allPs RAModeAll
-        (ReinstallAtomsMode, _, _) -> die
-            "reinstall-atoms mode is only valid with portage package manager"
+getPackageState :: Verbosity -> PkgManager -> IO PackageState
+getPackageState v pkgMgr =
+    case runMode pkgMgr of
+        Left mode -> case mode of
+            BasicMode OnlyInvalid ->
+                DefaultModeState . checkForNull DefaultInvalid <$> getInvalid
+            BasicMode AllInstalled ->
+                DefaultModeState . checkForNull DefaultAll <$> getAll
+            ListMode OnlyInvalid ->
+                ListModeState . ListInvalid <$> getInvalid
+            ListMode AllInstalled ->
+                ListModeState . ListAll <$> getAll
+        Right (ReinstallAtomsMode targ) -> case targ of
+            Right WorldTarget -> do
+                is <- getInvalid
+                allPs <- getAll
+                pure $ RAModeState allPs $ RAModeWorld is
+            Left OnlyInvalid -> do
+                is <- getInvalid
+                allPs <- getAll
+                pure $ RAModeState allPs $ RAModeInvalid is
+            Left AllInstalled -> do
+                allPs <- getAll
+                pure $ RAModeState allPs RAModeAll
   where
     getInvalid = do
         say v "Searching for packages installed with a different version of GHC."
@@ -222,8 +215,6 @@ getPackageState rm =
         say v $ "    It will likely need one more 'haskell-updater' run."
         say v ""
 
-    v = verbosity rm
-
 runCmd :: WithCmd -> String -> [String] -> IO ExitCode
 runCmd m cmd args = case m of
         RunOnly     ->                      runCommand cmd args
@@ -238,12 +229,16 @@ runCmd m cmd args = case m of
 runCommand     :: String -> [String] -> IO ExitCode
 runCommand cmd args = rawSystem cmd args
 
-buildPkgs :: RunModifier -> Either DefaultModePkgs (RAModePkgs, AllPkgs) -> IO ExitCode
-buildPkgs rm ts = runCmd (withCmd rm) cmd args
+buildPkgs
+    :: PkgManager
+    -> RunModifier
+    -> Either DefaultModePkgs (RAModePkgs, AllPkgs)
+    -> IO ExitCode
+buildPkgs pkgMgr rm ts = runCmd (withCmd rm) cmd args
   where
     (cmd, args) = case ts of
         Left ps ->
-            buildCmd (pkgmgr rm) (flags rm) (rawPMArgs rm) ps
+            buildCmd pkgMgr (flags rm) (rawPMArgs rm) ps
         Right (ps, allPkgs) ->
             buildAltCmd (flags rm) (rawPMArgs rm) ps allPkgs
 
@@ -269,8 +264,12 @@ progInfo = do pName <- getProgName
                            , ""
                            , "Options:"]
 
-systemInfo :: Verbosity -> RunModifier -> BuildTarget -> HackportMode -> IO ()
-systemInfo v rm t m = do
+systemInfo
+    :: RunModifier
+    -> PkgManager
+    -> RawPMArgs
+    -> IO ()
+systemInfo rm pkgMgr rawArgs = do
     ver    <- ghcVersion
     pName  <- getProgName
     let pVer = showVersion Paths.version
@@ -279,12 +278,32 @@ systemInfo v rm t m = do
     say v $ "Running " ++ pName ++ "-" ++ pVer ++ " using GHC " ++ ver
     say v $ "  * Executable: " ++ pLoc
     say v $ "  * Library directory: " ++ libDir
-    say v $ "  * Package manager (PM): " ++ nameOfPM (pkgmgr rm)
-    unless (null (rawPMArgs rm)) $
-        say v $ "  * PM auxiliary arguments: " ++ unwords (rawPMArgs rm)
+    say v $ "  * Package manager (PM): " ++ nameOfPM (toPkgManager pkgMgr)
+    unless (null rawArgs) $
+        say v $ "  * PM auxiliary arguments: " ++ unwords rawArgs
     say v $ "  * Target: " ++ argString t
     say v $ "  * Mode: " ++ argString m
     say v ""
+  where
+    v = verbosity rm
+
+    (m, t) = case runMode pkgMgr of
+        Left mode -> case mode of
+            BasicMode OnlyInvalid ->
+                (CmdLine.BasicMode, CmdLine.OnlyInvalid)
+            BasicMode AllInstalled ->
+                (CmdLine.BasicMode, CmdLine.AllInstalled)
+            ListMode OnlyInvalid ->
+                (CmdLine.ListMode, CmdLine.OnlyInvalid)
+            ListMode AllInstalled ->
+                (CmdLine.ListMode, CmdLine.AllInstalled)
+        Right (ReinstallAtomsMode targ) -> case targ of
+            Left OnlyInvalid ->
+                (CmdLine.ReinstallAtomsMode, CmdLine.OnlyInvalid)
+            Left AllInstalled ->
+                (CmdLine.ReinstallAtomsMode, CmdLine.AllInstalled)
+            Right WorldTarget ->
+                (CmdLine.ReinstallAtomsMode, CmdLine.WorldTarget)
 
 -- -----------------------------------------------------------------------------
 -- Utility functions

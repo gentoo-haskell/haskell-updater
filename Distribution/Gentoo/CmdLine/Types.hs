@@ -2,7 +2,48 @@
 module Distribution.Gentoo.CmdLine.Types where
 
 import Data.Proxy
+
+import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
+import Output
+
+data CmdLineArgs = CmdLineArgs
+    { cmdLinePkgManager :: PkgManager
+    , cmdLineCustomPM :: Maybe String
+    , cmdLinePretend :: Bool
+    , cmdLineNoDeep :: Bool
+    , cmdLineVersion :: Bool
+    , cmdLineAction :: WithCmd
+    , cmdLineTarget :: BuildTarget
+    , cmdLineMode :: RunMode
+    , cmdLineVerbosity :: Verbosity
+    , cmdLineHelp :: Bool
+    } deriving (Show, Eq, Ord)
+
+defCmdLineArgs :: PkgManager -> CmdLineArgs
+defCmdLineArgs defPM = CmdLineArgs
+    defPM
+    Nothing
+    False
+    False
+    False
+    PrintAndRun
+    OnlyInvalid
+    BasicMode
+    Normal
+    False
+
+data BuildTarget
+    = OnlyInvalid -- ^ Default
+    | AllInstalled -- ^ Rebuild every haskell package
+    | WorldTarget -- ^ Target @world portage set
+    deriving (Eq, Ord, Show, Read, Enum, Bounded)
+
+data RunMode
+    = BasicMode
+    | ListMode
+    | ReinstallAtomsMode
+    deriving (Show, Eq, Ord, Enum, Bounded)
 
 -- | A class for multiple-choice options selected by an argument on the command
 --   line
@@ -46,7 +87,7 @@ instance CmdlineOpt BuildTarget where
         "Choose the type of packages for the PM to target"
     optDefault _ = OnlyInvalid
 
-instance CmdlineOpt HackportMode where
+instance CmdlineOpt RunMode where
     argInfo BasicMode = ("basic", Just "classic haskell-updater behavior")
     argInfo ListMode =
         ( "list"

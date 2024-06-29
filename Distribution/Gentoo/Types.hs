@@ -1,10 +1,10 @@
+{-# LANGUAGE TypeApplications #-}
 
 module Distribution.Gentoo.Types
   ( RunModifier(..)
+  , RawPMArgs
   , WithCmd(..)
   , WithUserCmd
-  , BuildTarget(..)
-  , HackportMode(..)
   , PackageState(..)
   , DefaultModePkgs(..)
   , ListModePkgs(..)
@@ -21,18 +21,16 @@ import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager.Types
 import Output
 
--- | Full haskell-updater state
-data RunModifier = RM { pkgmgr   :: PkgManager
-                      , flags    :: [PMFlag]
+-- | Run-mode haskell-updater state
+data RunModifier = RM { flags    :: [PMFlag]
                       , withCmd  :: WithCmd
-                      , rawPMArgs :: [String]
+                      , rawPMArgs :: RawPMArgs
                       , verbosity :: Verbosity
-                      , showHelp :: Bool
-                      , showVer :: Bool
-                      , target   :: BuildTarget
-                      , mode :: HackportMode
                       }
                    deriving (Eq, Ord, Show)
+
+-- | Arguments to be passed when calling the package manager
+type RawPMArgs = [String]
 
 data WithCmd = PrintAndRun
              | PrintOnly
@@ -40,18 +38,6 @@ data WithCmd = PrintAndRun
                deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 type WithUserCmd = Either String WithCmd
-
-data BuildTarget
-    = OnlyInvalid -- ^ Default
-    | AllInstalled -- ^ Rebuild every haskell package
-    | WorldTarget -- ^ Target @world portage set
-    deriving (Eq, Ord, Show, Read, Enum, Bounded)
-
-data HackportMode
-    = BasicMode
-    | ListMode
-    | ReinstallAtomsMode
-    deriving (Show, Eq, Ord, Enum, Bounded)
 
 -- | The current package list(s) organized by mode and build target
 data PackageState

@@ -16,6 +16,7 @@ module Distribution.Gentoo.PkgManager
        , defaultPM
        , defaultPMName
        , nameOfPM
+       , toPkgManager
        , buildCmd
        , buildAltCmd
        ) where
@@ -23,6 +24,7 @@ module Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
+import qualified Distribution.Gentoo.Types.HUMode as Mode
 
 import Data.Char(toLower)
 import Data.Maybe(mapMaybe, fromMaybe)
@@ -104,13 +106,19 @@ defaultPMFlags Paludis       = [ "resolve"
 defaultPMFlags CustomPM{}    = []
 defaultPMFlags (InvalidPM _) = undefined
 
+toPkgManager :: Mode.PkgManager -> PkgManager
+toPkgManager (Mode.Portage _) = Portage
+toPkgManager (Mode.PkgCore _) = PkgCore
+toPkgManager (Mode.Paludis _) = Paludis
+toPkgManager (Mode.CustomPM s _) = CustomPM s
+
 buildCmd
-    :: PkgManager
+    :: Mode.PkgManager
     -> [PMFlag]
     -> [String]
     -> DefaultModePkgs
     -> (String, [String])
-buildCmd pm fs raw_pm_flags ps =
+buildCmd mpm fs raw_pm_flags ps =
     (  pmCommand pm
     ,  defaultPMFlags pm
     ++ mapMaybe (flagRep pm) fs
@@ -125,6 +133,8 @@ buildCmd pm fs raw_pm_flags ps =
         (_, DefaultAll a) -> targs a
 
     targs p = printPkg <$> Set.toList (getPkgs p)
+
+    pm = toPkgManager mpm
 
 -- | Alternative version of 'buildCmd' which uses experimental @emerge@
 --   invocation (using @--reinstall-atoms@). This is only to be used with the

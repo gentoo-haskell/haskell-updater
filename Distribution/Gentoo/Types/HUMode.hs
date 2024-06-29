@@ -9,7 +9,7 @@ module Distribution.Gentoo.Types.HUMode
     , ReinstallAtomsTarget(..)
     ) where
 
-import Distribution.Gentoo.Types (RunModifier)
+import Distribution.Gentoo.Types
 
 data HUMode
     = HelpMode
