@@ -61,6 +61,7 @@ executable haskell-updater
   main-is:          Main.hs
   other-modules:
     Distribution.Gentoo.CmdLine
+    Distribution.Gentoo.CmdLine.Types
     Distribution.Gentoo.GHC
     Distribution.Gentoo.Packages
     Distribution.Gentoo.PkgManager
