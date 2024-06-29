@@ -5,6 +5,7 @@ module Distribution.Gentoo.Types
   , RawPMArgs
   , WithCmd(..)
   , WithUserCmd
+  , CustomTargets
   , PackageState(..)
   , DefaultModePkgs(..)
   , ListModePkgs(..)
@@ -39,6 +40,8 @@ data WithCmd = PrintAndRun
 
 type WithUserCmd = Either String WithCmd
 
+type CustomTargets = [String]
+
 -- | The current package list(s) organized by mode and build target
 data PackageState
     = DefaultModeState (Maybe DefaultModePkgs)
@@ -60,6 +63,7 @@ data RAModePkgs
     = RAModeInvalid InvalidPkgs
     | RAModeAll
     | RAModeWorld InvalidPkgs
+    | RAModeCustom CustomTargets InvalidPkgs
     deriving (Show, Eq, Ord)
 
 class HasTargets t where
@@ -71,6 +75,7 @@ instance HasTargets PackageState where
     targetPkgs (RAModeState _ (RAModeInvalid ps)) = getPkgs ps
     targetPkgs (RAModeState ps RAModeAll) = getPkgs ps
     targetPkgs (RAModeState _ (RAModeWorld _)) = Set.empty
+    targetPkgs (RAModeState _ (RAModeCustom _ _)) = Set.empty
 
 instance HasTargets DefaultModePkgs where
     targetPkgs (DefaultInvalid ps) = getPkgs ps

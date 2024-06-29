@@ -176,6 +176,8 @@ buildAltCmd fs rawPmFlags raPS allPs =
                 (raArgs (getPkgs allPs), printPkg <$> Set.toList (getPkgs allPs))
             RAModeWorld p ->
                 (raArgs (getPkgs p), ["@world"])
+            RAModeCustom ts p ->
+                (raArgs (getPkgs p), ts)
 
 -- | Generate strings using portage's @--usepkg-exclude@ flag. This filters out
 --   dev-haskell/* packages which can be specified using a wildcard, in order

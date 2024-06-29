@@ -63,28 +63,40 @@ mkHUMode :: CmdLineArgs -> RawPMArgs -> Either String Mode.HUMode
 mkHUMode cmdLine raw
     | cmdLineHelp cmdLine = pure Mode.HelpMode
     | cmdLineVersion cmdLine = pure Mode.VersionMode
-    | otherwise = fmap (Mode.RunMode runModifier)
-        $ go $ maybe
-            (cmdLinePkgManager cmdLine)
-            CustomPM
-            (cmdLineCustomPM cmdLine)
+    | otherwise = do
+        let pkgMgr = maybe
+                        (cmdLinePkgManager cmdLine)
+                        CustomPM
+                        (cmdLineCustomPM cmdLine)
+        mPkgMgr <- go pkgMgr
+        pure $ Mode.RunMode runModifier mPkgMgr
   where
     go :: PkgManager -> Either String Mode.PkgManager
     go pkgMgr = case (pkgMgr, cmdLineMode cmdLine, cmdLineTarget cmdLine) of
-        (Portage, ReinstallAtomsMode, WorldTarget) -> pure
+        (Portage, ReinstallAtomsMode, Right WorldTarget) -> pure
             $ Mode.Portage $ Right $ Mode.ReinstallAtomsMode
             $ Right $ Mode.WorldTarget
-        (Portage, _, WorldTarget) -> Left
+        (Portage, ReinstallAtomsMode, Left targs) -> pure
+            $ Mode.Portage $ Right $ Mode.ReinstallAtomsMode
+            $ Right $ Mode.CustomTargets targs
+        (Portage, _, Right WorldTarget) -> Left
             "\"world\" target is only valid with reinstall-atoms mode"
-        (Portage, ReinstallAtomsMode, targ) -> pure
+        (Portage, _, Left _) -> Left
+            "custom targets are only valid with reinstall-atoms mode"
+        (Portage, ReinstallAtomsMode, Right targ) -> pure
             $ Mode.Portage $ Right $ Mode.ReinstallAtomsMode
             $ Left $ convTarget targ
-        (_, ReinstallAtomsMode, WorldTarget) -> Left
+        (_, ReinstallAtomsMode, Right WorldTarget) -> Left
            "\"world\" target is only valid with portage package manager"
-        (_, ReinstallAtomsMode, _) -> Left $ unwords
-            ["\"world\" target is only valid with reinstall-atoms mode and portage"
+        (_, _, Right WorldTarget) -> Left $ unwords
+            [ "\"world\" target is only valid with reinstall-atoms mode and portage"
             , "package manager"]
-        (_, mode, targ) -> pure $ convPkgMgr pkgMgr mode targ
+        (_, _, Left _) -> Left $ unwords
+            [ "custom targets are only valid with reinstall-atoms mode and portage"
+            , "package manager"]
+        (_, ReinstallAtomsMode, _) -> Left
+            "reinstall-atoms mode is only valid with portage package manager"
+        (_, mode, Right targ) -> pure $ convPkgMgr pkgMgr mode targ
 
     convPkgMgr :: PkgManager -> RunMode -> BuildTarget -> Mode.PkgManager
     convPkgMgr Portage mode targ = Mode.Portage $ Left $ convMode mode targ
@@ -138,7 +150,7 @@ options =
     , Option ['C'] ["custom-pm"]
       (ReqArg (\s c -> pure $ c { cmdLineCustomPM = Just s }) "command")
         $ "Use custom command as package manager;\n"
-          ++ "ignores the --pretend and --no-deep flags."
+          ++ "    ignores the --pretend and --no-deep flags."
     , Option ['p'] ["pretend"]
         (naUpdate $ \c -> c { cmdLinePretend = True } )
         "Only pretend to build packages."
@@ -152,27 +164,37 @@ options =
         (ReqArg (fromCmdline (\a c -> c { cmdLineAction = a })) "action")
         (argHelp (Proxy @WithCmd))
     , Option []    ["target"]
-        (ReqArg (fromCmdline (\a c -> c { cmdLineTarget = a })) "target")
+        (ReqArg (fromCmdline (\a -> updateTarget (Right a))) "target")
         (argHelp (Proxy @BuildTarget))
     , Option ['c'] ["dep-check"]
-        (naUpdate $ \c -> c { cmdLineTarget = OnlyInvalid })
+        (naUpdate $ updateTarget (Right OnlyInvalid))
         $ "alias for --target=" ++ argString OnlyInvalid
       -- deprecated alias for 'dep-check'
     , Option ['u'] ["upgrade"]
-        (naUpdate $ \c -> c { cmdLineTarget = OnlyInvalid })
+        (naUpdate $ updateTarget (Right OnlyInvalid))
         $ "alias for --target=" ++ argString OnlyInvalid
     , Option ['a'] ["all"]
-        (naUpdate $ \c -> c { cmdLineTarget = AllInstalled })
+        (naUpdate $ updateTarget (Right AllInstalled))
         $ "alias for --target=" ++ argString AllInstalled
     , Option ['W']    ["world"]
-        (naUpdate $ \r -> r
+        (naUpdate $ \c -> updateTarget (Right WorldTarget) c
             { cmdLinePkgManager = Portage
-            , cmdLineTarget = WorldTarget
             , cmdLineMode = ReinstallAtomsMode
             }
         ) $      "alias for --package-manager=portage"
          ++ " \\\n          --target=" ++ argString WorldTarget
          ++ " \\\n          --mode=" ++ argString ReinstallAtomsMode
+    , Option ['T'] ["custom-target"]
+        (ReqArg
+            (\s c -> pure $ updateTarget (Left s) c
+                { cmdLinePkgManager = Portage
+                , cmdLineMode = ReinstallAtomsMode
+                }
+            )
+        "target")
+        $  "Use a custom target. May be given multiple times.\n"
+        ++ "    Enables portage PM and reinstall-targets mode.\n"
+        ++ "    Will override any non-custom targets."
     , Option []    ["mode"]
         (ReqArg (fromCmdline (\a c -> c { cmdLineMode = a })) "mode")
         (argHelp (Proxy @RunMode))
@@ -207,9 +229,25 @@ options =
 
     pmList = unlines . map (" * " ++) $ definedPMs
     defPM = "The last valid value of PM specified is chosen.\n\
-            \The default package manager is: " ++ defaultPMName ++ ",\n\
-            \which can be overriden with the \"PACKAGE_MANAGER\"\n\
-            \environment variable."
+            \    The default package manager is: " ++ defaultPMName ++ ",\n\
+            \    which can be overriden with the \"PACKAGE_MANAGER\"\n\
+            \    environment variable."
+
+    -- Custom targets always override BuildTargets
+    -- New custom targets are appended to old custom targets
+    -- New BuildTargets override old BuildTargets
+    updateTarget :: Either String BuildTarget -> CmdLineArgs -> CmdLineArgs
+    updateTarget new old =
+        let newT = case (new, cmdLineTarget old) of
+                            -- Override old BuildTargets with new BuildTargets
+                            (Right t, Right _) -> Right t
+                            -- Append new custom target
+                            (Left s, Left ss) -> Left $ ss ++ [s]
+                            -- Drop old BuildTargets for new custom target
+                            (Left s, Right _) -> Left [s]
+                            -- Drop new BuildTargets in favor of old custom targets
+                            (Right _, Left ss) -> Left ss
+        in old { cmdLineTarget = newT }
 
 
 

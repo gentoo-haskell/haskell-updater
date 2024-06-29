@@ -107,6 +107,11 @@ runDriver rm pkgMgr rawArgs = do
                 (\ps -> Right (RAModeWorld ps, allPs))
                 UpdateTargets
                 ts
+        RAModeState allPs (RAModeCustom cts ts) ->
+            continuePass
+                (\ps -> Right (RAModeCustom cts ps, allPs))
+                UpdateTargets
+                ts
 
       where
 
@@ -162,6 +167,10 @@ getPackageState v pkgMgr =
                 is <- getInvalid
                 allPs <- getAll
                 pure $ RAModeState allPs $ RAModeWorld is
+            Right (CustomTargets cts) -> do
+                is <- getInvalid
+                allPs <- getAll
+                pure $ RAModeState allPs $ RAModeCustom cts is
             Left OnlyInvalid -> do
                 is <- getInvalid
                 allPs <- getAll
@@ -281,29 +290,31 @@ systemInfo rm pkgMgr rawArgs = do
     say v $ "  * Package manager (PM): " ++ nameOfPM (toPkgManager pkgMgr)
     unless (null rawArgs) $
         say v $ "  * PM auxiliary arguments: " ++ unwords rawArgs
-    say v $ "  * Target: " ++ argString t
+    say v $ "  * Targets: " ++ ts
     say v $ "  * Mode: " ++ argString m
     say v ""
   where
     v = verbosity rm
 
-    (m, t) = case runMode pkgMgr of
+    (m, ts) = case runMode pkgMgr of
         Left mode -> case mode of
             BasicMode OnlyInvalid ->
-                (CmdLine.BasicMode, CmdLine.OnlyInvalid)
+                (CmdLine.BasicMode, argString CmdLine.OnlyInvalid)
             BasicMode AllInstalled ->
-                (CmdLine.BasicMode, CmdLine.AllInstalled)
+                (CmdLine.BasicMode, argString CmdLine.AllInstalled)
             ListMode OnlyInvalid ->
-                (CmdLine.ListMode, CmdLine.OnlyInvalid)
+                (CmdLine.ListMode, argString CmdLine.OnlyInvalid)
             ListMode AllInstalled ->
-                (CmdLine.ListMode, CmdLine.AllInstalled)
+                (CmdLine.ListMode, argString CmdLine.AllInstalled)
         Right (ReinstallAtomsMode targ) -> case targ of
             Left OnlyInvalid ->
-                (CmdLine.ReinstallAtomsMode, CmdLine.OnlyInvalid)
+                (CmdLine.ReinstallAtomsMode, argString CmdLine.OnlyInvalid)
             Left AllInstalled ->
-                (CmdLine.ReinstallAtomsMode, CmdLine.AllInstalled)
+                (CmdLine.ReinstallAtomsMode, argString CmdLine.AllInstalled)
             Right WorldTarget ->
-                (CmdLine.ReinstallAtomsMode, CmdLine.WorldTarget)
+                (CmdLine.ReinstallAtomsMode, argString CmdLine.WorldTarget)
+            Right (CustomTargets cts) ->
+                (CmdLine.ReinstallAtomsMode, unwords cts)
 
 -- -----------------------------------------------------------------------------
 -- Utility functions

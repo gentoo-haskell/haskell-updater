@@ -14,7 +14,7 @@ data CmdLineArgs = CmdLineArgs
     , cmdLineNoDeep :: Bool
     , cmdLineVersion :: Bool
     , cmdLineAction :: WithCmd
-    , cmdLineTarget :: BuildTarget
+    , cmdLineTarget :: Either CustomTargets BuildTarget
     , cmdLineMode :: RunMode
     , cmdLineVerbosity :: Verbosity
     , cmdLineHelp :: Bool
@@ -28,7 +28,7 @@ defCmdLineArgs defPM = CmdLineArgs
     False
     False
     PrintAndRun
-    OnlyInvalid
+    (Right OnlyInvalid)
     BasicMode
     Normal
     False

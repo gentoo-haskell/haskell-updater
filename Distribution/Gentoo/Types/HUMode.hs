@@ -40,6 +40,7 @@ newtype ReinstallAtomsMode
 
 data ReinstallAtomsTarget
     = WorldTarget
+    | CustomTargets CustomTargets
     deriving (Eq, Ord, Show)
 
 runMode :: PkgManager -> Either RunMode ReinstallAtomsMode
