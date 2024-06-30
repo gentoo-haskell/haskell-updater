@@ -1,3 +1,12 @@
+{- |
+   Module      : Distribution.Gentoo.Types.HUMode
+   Description : Valid modes for haskell-updater
+
+   This module houses a complex ADT which represents valid modes for
+   haskell-updater. This is converted from @CmdLineArgs@ (in
+   @Distribution.Gentoo.CmdLine.Types@), which represents
+   possible options given on the command line.
+ -}
 
 module Distribution.Gentoo.Types.HUMode
     ( HUMode(..)

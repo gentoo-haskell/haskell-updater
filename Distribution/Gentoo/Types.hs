@@ -1,3 +1,9 @@
+{- |
+   Module      : Distribution.Gentoo.Types
+
+   General types needed for haskell-updater functionality
+ -}
+
 {-# LANGUAGE TypeApplications #-}
 
 module Distribution.Gentoo.Types

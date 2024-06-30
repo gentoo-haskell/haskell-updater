@@ -1,3 +1,8 @@
+{- |
+   Module      : Distribution.Gentoo.PkgManager.Types
+
+   Types relating to package managers supported by haskell-updater
+ -}
 
 module Distribution.Gentoo.PkgManager.Types
   ( PkgManager(..)

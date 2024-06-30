@@ -1,3 +1,8 @@
+{- |
+   Module      : Distribution.Gentoo.CmdLine.Types
+
+   Types representing command-line options
+ -}
 
 module Distribution.Gentoo.CmdLine.Types where
 
@@ -7,6 +12,7 @@ import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
 import Output
 
+-- | Represents possible options given on the command line
 data CmdLineArgs = CmdLineArgs
     { cmdLinePkgManager :: PkgManager
     , cmdLinePretend :: Bool

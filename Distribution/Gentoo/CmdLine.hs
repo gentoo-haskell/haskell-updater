@@ -1,3 +1,11 @@
+{- |
+   Module      : Distribution.Gentoo.CmdLine.Types
+
+   Functions and logic for parsing command line options and converting them
+   into a valid internal representation of haskell-updater modes (see
+   @Distribution.Gentoo.Types.HUMode@).
+ -}
+
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
