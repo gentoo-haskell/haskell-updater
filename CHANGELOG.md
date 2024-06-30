@@ -1,3 +1,13 @@
+## v1.4.1.0 (2024-06-30)
+
+Release v1.4.1.0
+
+- Add support for custom targets
+    - `--custom-target` (`-T`)
+- Improve logic behind looping mechanism for `--mode=reinstall-atoms`
+- Improve output and internal representations of packages/program state
+- Test with ghc-9.10
+
 ## v1.4.0.0 (2024-05-25)
 
 Release v1.4.0.0
