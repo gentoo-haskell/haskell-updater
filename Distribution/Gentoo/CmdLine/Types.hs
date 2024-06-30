@@ -9,7 +9,6 @@ import Output
 
 data CmdLineArgs = CmdLineArgs
     { cmdLinePkgManager :: PkgManager
-    , cmdLineCustomPM :: Maybe String
     , cmdLinePretend :: Bool
     , cmdLineNoDeep :: Bool
     , cmdLineVersion :: Bool
@@ -23,7 +22,6 @@ data CmdLineArgs = CmdLineArgs
 defCmdLineArgs :: PkgManager -> CmdLineArgs
 defCmdLineArgs defPM = CmdLineArgs
     defPM
-    Nothing
     False
     False
     False

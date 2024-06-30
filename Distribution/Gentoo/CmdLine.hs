@@ -64,10 +64,7 @@ mkHUMode cmdLine raw
     | cmdLineHelp cmdLine = pure Mode.HelpMode
     | cmdLineVersion cmdLine = pure Mode.VersionMode
     | otherwise = do
-        let pkgMgr = maybe
-                        (cmdLinePkgManager cmdLine)
-                        CustomPM
-                        (cmdLineCustomPM cmdLine)
+        let pkgMgr = cmdLinePkgManager cmdLine
         mPkgMgr <- go pkgMgr
         pure $ Mode.RunMode runModifier mPkgMgr
   where
@@ -148,7 +145,7 @@ options =
         $ "Use package manager PM, where PM can be one of:\n"
               ++ pmList ++ defPM
     , Option ['C'] ["custom-pm"]
-      (ReqArg (\s c -> pure $ c { cmdLineCustomPM = Just s }) "command")
+      (ReqArg (\s c -> pure $ c { cmdLinePkgManager = CustomPM s }) "command")
         $ "Use custom command as package manager;\n"
           ++ "    ignores the --pretend and --no-deep flags."
     , Option ['p'] ["pretend"]
@@ -225,7 +222,7 @@ options =
         Portage -> Right $ c { cmdLinePkgManager = Portage }
         Paludis -> Right $ c { cmdLinePkgManager = Paludis }
         PkgCore -> Right $ c { cmdLinePkgManager = PkgCore }
-        CustomPM _ -> undefined
+        CustomPM _ -> error "Undefined behavior in mkPM"
 
     pmList = unlines . map (" * " ++) $ definedPMs
     defPM = "The last valid value of PM specified is chosen.\n\
