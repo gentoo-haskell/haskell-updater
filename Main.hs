@@ -147,7 +147,7 @@ runDriver rm pkgMgr rawArgs = do
                             (True, ExitFailure _) -> do
                                 dumpHistory v pastHistory
                                 die "Updater stuck in the loop and can't progress"
-                            (True, ExitSuccess) -> exitSuccess
+                            (True, ExitSuccess) -> pure ()
                             _ -> buildPkgs pkgMgr rm (cnst ts) >>= next
 
 getPackageState :: Verbosity -> PkgManager -> IO PackageState
@@ -243,7 +243,9 @@ buildPkgs
     -> RunModifier
     -> Either DefaultModePkgs (RAModePkgs, AllPkgs)
     -> IO ExitCode
-buildPkgs pkgMgr rm ts = runCmd (withCmd rm) cmd args
+buildPkgs pkgMgr rm ts = do
+    putStrLn ""
+    runCmd (withCmd rm) cmd args
   where
     (cmd, args) = case ts of
         Left ps ->

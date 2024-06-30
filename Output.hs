@@ -44,10 +44,18 @@ printList v f = mapM_ (say v . (++) "  * " . f)
 
 -- Print a list of packages, with a description of what they are.
 pkgListPrintLn :: Verbosity -> String -> Set.Set Package -> IO ()
-pkgListPrintLn v desc pkgs = do
-      if null pkgs
-        then say v $ unwords ["No", desc, "packages found!"]
-        else do say v $ unwords ["Found the following"
-                              , desc, "packages:"]
-                printList v printPkg (Set.toList pkgs)
-      say v ""
+pkgListPrintLn v desc pkgs
+    | null pkgs = do
+        say v ""
+        say v $ unwords ["No", desc, "packages found!"]
+    | otherwise = case v of
+        Quiet -> pure ()
+        Normal -> do
+            hPutStrLn stderr $ unwords
+                ["Found", show (Set.size pkgs), desc, "packages."]
+            hPutStrLn stderr ""
+        Verbose -> do
+            hPutStrLn stderr $ unwords
+                ["Found the following", desc, "packages:"]
+            printList v printPkg (Set.toList pkgs)
+            hPutStrLn stderr ""
