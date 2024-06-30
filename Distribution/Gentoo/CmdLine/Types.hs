@@ -4,9 +4,30 @@
    Types representing command-line options
  -}
 
-module Distribution.Gentoo.CmdLine.Types where
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
-import Data.Proxy
+module Distribution.Gentoo.CmdLine.Types
+    (
+      -- * main type
+      CmdLineArgs(..)
+    , defCmdLineArgs
+      -- * sub types
+    , BuildTarget(..)
+    , RunMode(..)
+    , CmdlineOpt(..)
+      -- * getter functions
+    , argString
+    , argDescription
+      -- * utility functions
+    , argHelp
+    , fromCmdline
+    ) where
+
+import           Data.Char             (toLower)
+import qualified Data.List             as L
+import           Data.Proxy
 
 import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
@@ -108,3 +129,45 @@ instance CmdlineOpt RunMode where
     optDescription _ =
         "Mode of operation for haskell-updater"
     optDefault _ = BasicMode
+
+argString :: CmdlineOpt a => a -> String
+argString = fst . argInfo
+
+argDescription :: CmdlineOpt a => a -> Maybe String
+argDescription = snd . argInfo
+
+argHelp :: forall a. CmdlineOpt a => Proxy a -> String
+argHelp _ = unlines $ [mainDesc] ++ (args >>= argLine)
+  where
+    mainDesc = optDescription (Proxy @a)
+    argLine a = case (L.lookup a argFields, argDescription a) of
+        (Nothing, _) -> []
+        (Just s, Nothing) ->  [s]
+        (Just s, Just d) -> case lines d of
+            (l:ls) -> [paddedFst s l] ++ (paddedRest <$> ls)
+            _ -> []
+    paddedFst s d =
+        s ++ replicate (padMax - length s) ' ' ++ " : " ++ d
+    paddedRest d = replicate (padMax + 3) ' ' ++ d
+    padMax = maximum $ length . snd <$> argFields
+    argFields = (\a -> (a, showArg a)) <$> args
+    showArg a = " * " ++ argString a ++ showDef a
+    showDef a
+        | optDefault (Proxy @a) == a = " (default)"
+        | otherwise = ""
+    args = [minBound :: a .. maxBound]
+
+fromCmdline
+    :: forall a. CmdlineOpt a
+    => (a -> CmdLineArgs -> CmdLineArgs)
+    -> String
+    -> CmdLineArgs
+    -> Either String CmdLineArgs
+fromCmdline update s rm =
+    case L.find (\a -> argString a == lowerS) args of
+        Nothing -> Left $ "Unknown " ++ name ++ ": " ++ lowerS
+        Just a -> Right $ update a rm
+  where
+    lowerS = map toLower s
+    name = optName $ Proxy @a
+    args = [minBound :: a .. maxBound]

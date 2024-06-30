@@ -6,7 +6,6 @@
    @Distribution.Gentoo.Types.HUMode@).
  -}
 
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -18,8 +17,6 @@ module Distribution.Gentoo.CmdLine
   ) where
 
 import           Control.Monad         ((>=>))
-import           Data.Char             (toLower)
-import qualified Data.List             as L
 import           Data.Proxy
 import           System.Console.GetOpt
 
@@ -29,36 +26,6 @@ import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
 import qualified Distribution.Gentoo.Types.HUMode as Mode
 import Output
-
--- -----------------------------------------------------------------------------
--- Command-line flags
-
-argString :: CmdlineOpt a => a -> String
-argString = fst . argInfo
-
-argDescription :: CmdlineOpt a => a -> Maybe String
-argDescription = snd . argInfo
-
-argHelp :: forall a. CmdlineOpt a => Proxy a -> String
-argHelp _ = unlines $ [mainDesc] ++ (args >>= argLine)
-  where
-    mainDesc = optDescription (Proxy @a)
-    argLine a = case (L.lookup a argFields, argDescription a) of
-        (Nothing, _) -> []
-        (Just s, Nothing) ->  [s]
-        (Just s, Just d) -> case lines d of
-            (l:ls) -> [paddedFst s l] ++ (paddedRest <$> ls)
-            _ -> []
-    paddedFst s d =
-        s ++ replicate (padMax - length s) ' ' ++ " : " ++ d
-    paddedRest d = replicate (padMax + 3) ' ' ++ d
-    padMax = maximum $ length . snd <$> argFields
-    argFields = (\a -> (a, showArg a)) <$> args
-    showArg a = " * " ++ argString a ++ showDef a
-    showDef a
-        | optDefault (Proxy @a) == a = " (default)"
-        | otherwise = ""
-    args = [minBound :: a .. maxBound]
 
 parseArgs :: PkgManager -> RawPMArgs -> Either String (CmdLineArgs, RawPMArgs)
 parseArgs defPM args = case getOpt' Permute options args of
@@ -130,21 +97,6 @@ mkHUMode cmdLine raw
         , rawPMArgs = raw
         , verbosity = cmdLineVerbosity cmdLine
         }
-
-fromCmdline
-    :: forall a. CmdlineOpt a
-    => (a -> CmdLineArgs -> CmdLineArgs)
-    -> String
-    -> CmdLineArgs
-    -> Either String CmdLineArgs
-fromCmdline update s rm =
-    case L.find (\a -> argString a == lowerS) args of
-        Nothing -> Left $ "Unknown " ++ name ++ ": " ++ lowerS
-        Just a -> Right $ update a rm
-  where
-    lowerS = map toLower s
-    name = optName $ Proxy @a
-    args = [minBound :: a .. maxBound]
 
 options :: [OptDescr (CmdLineArgs -> Either String CmdLineArgs)]
 options =
