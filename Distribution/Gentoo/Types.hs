@@ -16,6 +16,7 @@ module Distribution.Gentoo.Types
   , Target(..)
   , RunHistory
   , LoopType(..)
+  , ExtraRawArgs(..)
   , InvalidPkgs(..)
   , AllPkgs(..)
   , PackageSet(..)
@@ -93,6 +94,11 @@ data LoopType
       --   Used by e.g. @--target=all@.
     | NoLoop
     deriving (Show, Eq, Ord, Enum, Bounded)
+
+-- | Any hard-coded extra raw arguments to pass to the package manager, which
+--   are needed for some @haskell-updater@ modes.
+newtype ExtraRawArgs = ExtraRawArgs [String]
+    deriving (Show, Eq, Ord)
 
 newtype InvalidPkgs = InvalidPkgs (Set.Set Package)
     deriving (Show, Eq, Ord)

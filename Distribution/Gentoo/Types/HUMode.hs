@@ -20,6 +20,7 @@ module Distribution.Gentoo.Types.HUMode
     , ReinstallAtomsMode(..)
     , ReinstallAtomsTarget(..)
     , getLoopType
+    , getExtraRawArgs
     ) where
 
 import Distribution.Gentoo.Types hiding (Target)
@@ -85,3 +86,11 @@ getLoopType = \case
     fromRunMode = \case
         BasicMode _ -> UntilNoPending
         ListMode _ -> NoLoop
+
+-- | Convert from the @haskell-updater@ ADT to 'ExtraRawArgs', hard-coded extra
+--   arguments that will be passed to the package manager.
+--
+--   Takes a 'PkgManager' as 'RunMode' is the only mode which runs a package
+--   manager.
+getExtraRawArgs :: PkgManager -> ExtraRawArgs
+getExtraRawArgs _ = ExtraRawArgs [] -- currently unused feature

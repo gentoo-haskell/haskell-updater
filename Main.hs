@@ -73,8 +73,8 @@ runUpdater
     -> PkgManager
     -> RawPMArgs
     -> IO a
-runUpdater rm pkgMgr rawArgs = do
-    systemInfo rm pkgMgr rawArgs
+runUpdater rm pkgMgr userArgs = do
+    systemInfo rm pkgMgr userArgs
     (ps, bps) <- getPackageState v pkgMgr
     case runMode pkgMgr of
         Left (ListMode _) -> do
@@ -83,7 +83,7 @@ runUpdater rm pkgMgr rawArgs = do
         _ -> case getLoopType pkgMgr of
             UntilNoPending -> loopUntilNoPending ps bps Seq.empty
             UntilNoChange -> loopUntilNoChange ps bps Seq.empty
-            NoLoop -> buildPkgs rm ps bps >>= exitWith
+            NoLoop -> buildPkgs rm rawArgs ps bps >>= exitWith
     success v "done!"
   where
     v = verbosity rm
@@ -110,7 +110,7 @@ runUpdater rm pkgMgr rawArgs = do
         -> RunHistory
         -> IO ()
     next f ps bps hist = do
-        exitCode <- buildPkgs rm ps bps
+        exitCode <- buildPkgs rm rawArgs ps bps
 
         let hist' = hist |> (getPkgs ps, exitCode)
         (ps', bps') <- getPackageState v pkgMgr
@@ -121,6 +121,8 @@ runUpdater rm pkgMgr rawArgs = do
     alertStuck hist = do
         dumpHistory v hist
         die "Updater stuck in the loop and can't progress"
+
+    rawArgs = getExtraRawArgs pkgMgr
 
 -- | Determines which function 'buildPkgs' will run to get the package-manager
 --   command.
@@ -211,18 +213,19 @@ runCommand cmd args = rawSystem cmd args
 
 buildPkgs
     :: RunModifier
+    -> ExtraRawArgs
     -> PendingPackages
     -> BuildPkgs
     -> IO ExitCode
-buildPkgs rm pps bp = do
+buildPkgs rm rawArgs pps bp = do
     putStrLn ""
     runCmd (withCmd rm) cmd args
   where
     (cmd, args) = case bp of
         BuildNormal pkgMgr ->
-            buildCmd pkgMgr (flags rm) (rawPMArgs rm) pps
+            buildCmd pkgMgr (flags rm) rawArgs (rawPMArgs rm) pps
         BuildRAMode targets allPkgs ->
-            buildRACmd (flags rm) (rawPMArgs rm) pps targets allPkgs
+            buildRACmd (flags rm) rawArgs (rawPMArgs rm) pps targets allPkgs
 
 -- -----------------------------------------------------------------------------
 -- Printing information.

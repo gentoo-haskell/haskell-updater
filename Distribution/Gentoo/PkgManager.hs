@@ -118,13 +118,15 @@ toPkgManager (Mode.CustomPM s _) = CustomPM s
 buildCmd
     :: Mode.PkgManager
     -> [PMFlag] -- ^ Basic flags
+    -> ExtraRawArgs -- ^ hard-coded extra flags
     -> RawPMArgs -- ^ User-supplied flags
     -> PendingPackages -- ^ Packages to be rebuilt
     -> (String, [String])
-buildCmd mpm fs userArgs pending =
+buildCmd mpm fs (ExtraRawArgs rawArgs) userArgs pending =
     (  pmCommand pm
     ,  defaultPMFlags pm
     ++ mapMaybe (flagRep pm) fs
+    ++ rawArgs
     ++ userArgs
     ++ excl
     ++ targs
@@ -149,16 +151,18 @@ buildCmd mpm fs userArgs pending =
 --   needed dependencies that have been broken.
 buildRACmd
     :: [PMFlag] -- ^ Basic flags
+    -> ExtraRawArgs -- ^ hard-coded extra flags
     -> RawPMArgs -- ^ User-supplied flags
     -> PendingPackages -- ^ Packages to be rebuilt
     -> Set.Set Target -- ^ emerge targets
     -> AllPkgs -- ^ for use with 'usepkgExclude'
     -> (String, [String])
-buildRACmd fs userArgs pending targets allPs =
+buildRACmd fs (ExtraRawArgs rawArgs) userArgs pending targets allPs =
     (  pmCommand Portage
     ,  defaultPMFlags Portage
     ++ mapMaybe (flagRep Portage) fs
     ++ ["--update"]
+    ++ rawArgs
     ++ userArgs
     ++ usepkgExclude allPs
     ++ reinst
