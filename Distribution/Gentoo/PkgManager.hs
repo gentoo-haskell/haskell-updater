@@ -1,5 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-
 {- |
    Module      : Distribution.Gentoo.PkgManager
    Description : Using package managers in Gentoo.
@@ -8,6 +6,9 @@
 
    This module defines ways to use different Gentoo package managers.
  -}
+
+{-# LANGUAGE LambdaCase #-}
+
 module Distribution.Gentoo.PkgManager
        ( definedPMs
        , choosePM
@@ -18,7 +19,7 @@ module Distribution.Gentoo.PkgManager
        , nameOfPM
        , toPkgManager
        , buildCmd
-       , buildAltCmd
+       , buildRACmd
        ) where
 
 import Distribution.Gentoo.Packages
@@ -106,6 +107,8 @@ defaultPMFlags Paludis       = [ "resolve"
 defaultPMFlags CustomPM{}    = []
 defaultPMFlags (InvalidPM _) = undefined
 
+-- | Convert from a @HUMode@ 'Mode.PkgManager' to a 'PkgManager' as defined
+--   in this module.
 toPkgManager :: Mode.PkgManager -> PkgManager
 toPkgManager (Mode.Portage _) = Portage
 toPkgManager (Mode.PkgCore _) = PkgCore
@@ -114,31 +117,28 @@ toPkgManager (Mode.CustomPM s _) = CustomPM s
 
 buildCmd
     :: Mode.PkgManager
-    -> [PMFlag]
-    -> [String]
-    -> DefaultModePkgs
+    -> [PMFlag] -- ^ Basic flags
+    -> RawPMArgs -- ^ User-supplied flags
+    -> PendingPackages -- ^ Packages to be rebuilt
     -> (String, [String])
-buildCmd mpm fs raw_pm_flags ps =
+buildCmd mpm fs userArgs pending =
     (  pmCommand pm
     ,  defaultPMFlags pm
     ++ mapMaybe (flagRep pm) fs
-    ++ raw_pm_flags
-    ++ rest
+    ++ userArgs
+    ++ excl
+    ++ targs
     )
   where
-    rest = case (pm, ps) of
-        (Portage, DefaultInvalid p) -> usepkgExclude p ++ targs p
-        (Portage, DefaultAll a) -> usepkgExclude a ++ targs a
-        (_, DefaultInvalid p) -> targs p
-        (_, DefaultAll a) -> targs a
-
-    targs p = printPkg <$> Set.toList (getPkgs p)
-
+    excl = case pm of
+        Portage -> usepkgExclude pending
+        _ -> []
+    targs = printPkg <$> Set.toList (getPkgs pending)
     pm = toPkgManager mpm
 
 -- | Alternative version of 'buildCmd' which uses experimental @emerge@
 --   invocation (using @--reinstall-atoms@). This is only to be used with the
---   'Portage' 'PkgManager'.
+--   'Portage' package manager.
 --
 --   The rationale is that by marking broken packages by using
 --   @--reinstall-atoms@, portage will pretend that they are not yet
@@ -147,37 +147,35 @@ buildCmd mpm fs raw_pm_flags ps =
 --   Haskell environment is examined. This has a side-effect of skipping
 --   packages that are masked or otherwise unavailable while still rebuilding
 --   needed dependencies that have been broken.
-buildAltCmd
+buildRACmd
     :: [PMFlag] -- ^ Basic flags
-    -> [String] -- ^ User-supplied flags
-    -> RAModePkgs -- ^ Set of packages to rebuild
-    -- | 'True' denotes a @world@ target
-    -> AllPkgs
+    -> RawPMArgs -- ^ User-supplied flags
+    -> PendingPackages -- ^ Packages to be rebuilt
+    -> Set.Set Target -- ^ emerge targets
+    -> AllPkgs -- ^ for use with 'usepkgExclude'
     -> (String, [String])
-buildAltCmd fs rawPmFlags raPS allPs =
+buildRACmd fs userArgs pending targets allPs =
     (  pmCommand Portage
     ,  defaultPMFlags Portage
     ++ mapMaybe (flagRep Portage) fs
     ++ ["--update"]
-    ++ rawPmFlags
+    ++ userArgs
     ++ usepkgExclude allPs
     ++ reinst
     ++ targs
     )
   where
-    (reinst, targs) =
+    reinst =
         let raArgs ps
               | Set.null ps = []
               | otherwise = ["--reinstall-atoms", unwords (printPkg <$> Set.toList ps)]
-        in case raPS of
-            RAModeInvalid p ->
-                (raArgs (getPkgs p), printPkg <$> Set.toList (getPkgs allPs))
-            RAModeAll ->
-                (raArgs (getPkgs allPs), printPkg <$> Set.toList (getPkgs allPs))
-            RAModeWorld p ->
-                (raArgs (getPkgs p), ["@world"])
-            RAModeCustom ts p ->
-                (raArgs (getPkgs p), ts)
+        in raArgs (getPkgs pending)
+    targs = Set.toList $ foldr go Set.empty targets
+      where
+        go targ set = case targ of
+            TargetInvalid (InvalidPkgs p) -> foldr (Set.insert . printPkg) set p
+            TargetAll (AllPkgs p) -> foldr (Set.insert . printPkg) set p
+            CustomTarget t -> Set.insert t set
 
 -- | Generate strings using portage's @--usepkg-exclude@ flag. This filters out
 --   dev-haskell/* packages which can be specified using a wildcard, in order

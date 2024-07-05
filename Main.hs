@@ -17,14 +17,13 @@ import qualified Distribution.Gentoo.CmdLine.Types as CmdLine -- (CmdLineArgs, B
 import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
-import Distribution.Gentoo.Types
-import Distribution.Gentoo.Types.HUMode
+import Distribution.Gentoo.Types as Types
+import Distribution.Gentoo.Types.HUMode as Mode
 
 import           Control.Monad         (unless)
 import qualified Control.Monad         as CM
 import           Data.Foldable         (toList)
-import qualified Data.List             as L
-import           Data.Sequence         (Seq, ViewR(..), viewr)
+import           Data.Sequence         (ViewR(..), viewr, (|>))
 import qualified Data.Sequence         as Seq
 import qualified Data.Set              as Set
 import           Data.Version          (showVersion)
@@ -50,134 +49,111 @@ runAction cmdArgs rawArgs = do
     case mode of
         HelpMode -> help
         VersionMode -> version
-        RunMode rm pm -> runDriver rm pm rawArgs
+        RunMode rm pm -> runUpdater rm pm rawArgs
 
--- set of packages to rebuild at pass number
-type DriverHistory = Seq (Set.Set Package, ExitCode)
-
-data TargetType
-    = InvalidTargets
-    | AllTargets
-    | UpdateTargets
-
-initialHistory :: DriverHistory
-initialHistory = Seq.empty
-
-dumpHistory :: Verbosity -> DriverHistory -> IO ()
+dumpHistory :: Verbosity -> RunHistory -> IO ()
 dumpHistory v historySeq = do
     say v "Updater's past history:"
-    CM.forM_ historyList $ \(n, entry, ec) ->
-      say v $ unwords $ ["Pass", show n, ":"] ++ map printPkg (Set.toList entry) ++ [show ec]
+    CM.forM_ historyList $ \(n, entry, ec) -> say v $ unwords
+        [ "Pass"
+        , show n ++ ":"
+        , show $ printPkg <$> Set.toList entry
+        , show ec
+        ]
   where historyList :: [(Int, Set.Set Package, ExitCode)]
-        historyList = L.sort [ (n, entry, ec) | ((entry, ec), n) <- zip (toList historySeq) [1..] ]
+        historyList =
+            [ (n, entry, ec)
+            | ((entry, ec), n) <- zip (toList historySeq) [1..]
+            ]
 
-runDriver :: RunModifier
+-- | Run the main part of @haskell-updater@ (e.g. not @--help@ or
+--   @--version@).
+runUpdater
+    :: RunModifier
     -> PkgManager
     -> RawPMArgs
     -> IO a
-runDriver rm pkgMgr rawArgs = do
+runUpdater rm pkgMgr rawArgs = do
     systemInfo rm pkgMgr rawArgs
-    updaterPass initialHistory
+    (ps, bps) <- getPackageState v pkgMgr
+    case runMode pkgMgr of
+        Left (ListMode _) -> do
+            mapM_ (putStrLn . printPkg) (getPkgs ps)
+            success v "done!"
+        _ -> case getLoopType pkgMgr of
+            UntilNoPending -> loopUntilNoPending ps bps Seq.empty
+            UntilNoChange -> loopUntilNoChange ps bps Seq.empty
+            NoLoop -> buildPkgs rm ps bps >>= exitWith
     success v "done!"
   where
     v = verbosity rm
 
-    updaterPass :: DriverHistory -> IO ()
-    updaterPass pastHistory = getPackageState v pkgMgr >>= \case
-        ListModeState m -> do
-            mapM_ (putStrLn . printPkg) (targetPkgs m)
-            success v "done!"
-        DefaultModeState (Just (DefaultInvalid ts)) ->
-            continuePass (Left . DefaultInvalid) InvalidTargets ts
-        DefaultModeState (Just (DefaultAll ts)) ->
-            continuePass (Left . DefaultAll) AllTargets ts
-        DefaultModeState Nothing -> alertDone
-        RAModeState allPs (RAModeInvalid ts) ->
-            continuePass
-                (\ps -> Right (RAModeInvalid ps, allPs))
-                UpdateTargets
-                ts
-        RAModeState allPs RAModeAll ->
-            continuePass
-                (\_ -> Right (RAModeAll, allPs))
-                AllTargets
-                ()
-        RAModeState allPs (RAModeWorld ts) ->
-            continuePass
-                (\ps -> Right (RAModeWorld ps, allPs))
-                UpdateTargets
-                ts
-        RAModeState allPs (RAModeCustom cts ts) ->
-            continuePass
-                (\ps -> Right (RAModeCustom cts ps, allPs))
-                UpdateTargets
-                ts
+    loopUntilNoPending :: PendingPackages -> BuildPkgs -> RunHistory -> IO ()
+    loopUntilNoPending ps bps hist
+        | getPkgs ps `elem` (fst <$> toList hist) = alertStuck hist
+        | Set.null (getPkgs ps) = alertDone
+        | otherwise = next loopUntilNoPending ps bps hist
 
-      where
+    loopUntilNoChange :: PendingPackages -> BuildPkgs -> RunHistory -> IO ()
+    loopUntilNoChange ps bps hist = case viewr hist of
+        EmptyR -> next loopUntilNoChange ps bps hist
+        (_ :> (past, pastEC))
+            | getPkgs ps == past -> case pastEC of
+                ExitFailure _ -> alertStuck hist
+                ExitSuccess -> alertDone
+            | otherwise -> next loopUntilNoChange ps bps hist
 
-        alertDone = success (verbosity rm) "\nNothing to build!"
+    next
+        :: (PendingPackages -> BuildPkgs -> RunHistory -> IO ())
+        -> PendingPackages
+        -> BuildPkgs
+        -> RunHistory
+        -> IO ()
+    next f ps bps hist = do
+        exitCode <- buildPkgs rm ps bps
 
-        continuePass
-            :: PackageSet ts
-            => (ts -> Either DefaultModePkgs (RAModePkgs, AllPkgs))
-            -> TargetType
-            -> ts
-            -> IO ()
-        continuePass cnst targetType ts = do
-            let next ec = updaterPass
-                    $ pastHistory <> Seq.singleton (getPkgs ts, ec)
+        let hist' = hist |> (getPkgs ps, exitCode)
+        (ps', bps') <- getPackageState v pkgMgr
 
-            case targetType of
-                InvalidTargets -> do
-                    CM.when (getPkgs ts `elem` map fst (toList pastHistory)) $ do
-                        dumpHistory v pastHistory
-                        die "Updater stuck in the loop and can't progress"
+        f ps' bps' hist'
 
-                    exitCode <- buildPkgs pkgMgr rm (cnst ts)
+    alertDone = success (verbosity rm) "\nNothing to build!"
+    alertStuck hist = do
+        dumpHistory v hist
+        die "Updater stuck in the loop and can't progress"
 
-                    next exitCode
-                AllTargets -> do
-                    exitCode <- buildPkgs pkgMgr rm (cnst ts)
+-- | Determines which function 'buildPkgs' will run to get the package-manager
+--   command.
+data BuildPkgs
+    = BuildNormal Mode.PkgManager -- ^ @--mode=basic@
+    | BuildRAMode (Set.Set Types.Target) AllPkgs -- ^ @--mode=reinstall-atoms@
 
-                    exitWith exitCode
-                UpdateTargets -> case viewr pastHistory of
-                    EmptyR -> buildPkgs pkgMgr rm (cnst ts) >>= next
-                    (_ :> (past, pastEC)) -> do
-                        case (getPkgs ts == past, pastEC) of
-                            (True, ExitFailure _) -> do
-                                dumpHistory v pastHistory
-                                die "Updater stuck in the loop and can't progress"
-                            (True, ExitSuccess) -> pure ()
-                            _ -> buildPkgs pkgMgr rm (cnst ts) >>= next
-
-getPackageState :: Verbosity -> PkgManager -> IO PackageState
+-- | As needed, query @ghc-pkg check@ for broken packages, scan the filesystem
+--   for installed packages, and look for misc breakages. Return the results
+--   summarized as 'PendingPackages' and 'BuildPkgs'.
+getPackageState :: Verbosity -> PkgManager -> IO (PendingPackages, BuildPkgs)
 getPackageState v pkgMgr =
     case runMode pkgMgr of
-        Left mode -> case mode of
-            BasicMode OnlyInvalid ->
-                DefaultModeState . checkForNull DefaultInvalid <$> getInvalid
-            BasicMode AllInstalled ->
-                DefaultModeState . checkForNull DefaultAll <$> getAll
-            ListMode OnlyInvalid ->
-                ListModeState . ListInvalid <$> getInvalid
-            ListMode AllInstalled ->
-                ListModeState . ListAll <$> getAll
-        Right (ReinstallAtomsMode targ) -> case targ of
-            Right WorldTarget -> do
-                is <- getInvalid
-                allPs <- getAll
-                pure $ RAModeState allPs $ RAModeWorld is
-            Right (CustomTargets cts) -> do
-                is <- getInvalid
-                allPs <- getAll
-                pure $ RAModeState allPs $ RAModeCustom cts is
-            Left OnlyInvalid -> do
-                is <- getInvalid
-                allPs <- getAll
-                pure $ RAModeState allPs $ RAModeInvalid is
-            Left AllInstalled -> do
-                allPs <- getAll
-                pure $ RAModeState allPs RAModeAll
+        Left mode -> do
+            p <- case getTarget mode of
+                OnlyInvalid -> InvalidPending <$> getInvalid
+                AllInstalled -> AllPending <$> getAll
+            pure (p, BuildNormal pkgMgr)
+        Right (ReinstallAtomsMode targ) -> do
+            aps <- getAll
+            (p,ts) <- case targ of
+                Left OnlyInvalid -> do
+                    ips <- getInvalid
+                    pure (InvalidPending ips, Set.singleton (TargetInvalid ips))
+                Left AllInstalled ->
+                    pure (AllPending aps, Set.singleton (TargetAll aps))
+                Right t -> do
+                    ips <- getInvalid
+                    let ts = case t of
+                            WorldTarget -> Set.singleton (CustomTarget "@world")
+                            CustomTargets cts -> Set.fromList (CustomTarget <$> cts)
+                    pure (InvalidPending ips, ts)
+            pure (p, BuildRAMode ts aps)
   where
     getInvalid = do
         say v "Searching for packages installed with a different version of GHC."
@@ -201,11 +177,6 @@ getPackageState v pkgMgr =
         pkgs <- allInstalledPackages
         pkgListPrintLn v "installed" pkgs
         return $ AllPkgs pkgs
-
-    checkForNull :: PackageSet ts => (ts -> b) -> ts -> Maybe b
-    checkForNull cnst l
-        | null (getPkgs l) = Nothing
-        | otherwise = Just (cnst l)
 
     printUnknownPackagesLn [] = return ()
     printUnknownPackagesLn ps = do
@@ -239,19 +210,19 @@ runCommand     :: String -> [String] -> IO ExitCode
 runCommand cmd args = rawSystem cmd args
 
 buildPkgs
-    :: PkgManager
-    -> RunModifier
-    -> Either DefaultModePkgs (RAModePkgs, AllPkgs)
+    :: RunModifier
+    -> PendingPackages
+    -> BuildPkgs
     -> IO ExitCode
-buildPkgs pkgMgr rm ts = do
+buildPkgs rm pps bp = do
     putStrLn ""
     runCmd (withCmd rm) cmd args
   where
-    (cmd, args) = case ts of
-        Left ps ->
-            buildCmd pkgMgr (flags rm) (rawPMArgs rm) ps
-        Right (ps, allPkgs) ->
-            buildAltCmd (flags rm) (rawPMArgs rm) ps allPkgs
+    (cmd, args) = case bp of
+        BuildNormal pkgMgr ->
+            buildCmd pkgMgr (flags rm) (rawPMArgs rm) pps
+        BuildRAMode targets allPkgs ->
+            buildRACmd (flags rm) (rawPMArgs rm) pps targets allPkgs
 
 -- -----------------------------------------------------------------------------
 -- Printing information.

@@ -12,17 +12,18 @@ module Distribution.Gentoo.Types
   , WithCmd(..)
   , WithUserCmd
   , CustomTargets
-  , PackageState(..)
-  , DefaultModePkgs(..)
-  , ListModePkgs(..)
-  , RAModePkgs(..)
-  , HasTargets(..)
+  , PendingPackages(..)
+  , Target(..)
+  , RunHistory
+  , LoopType(..)
   , InvalidPkgs(..)
   , AllPkgs(..)
   , PackageSet(..)
   ) where
 
 import qualified Data.Set as Set
+import qualified Data.Sequence as Seq
+import System.Exit (ExitCode(..))
 
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager.Types
@@ -48,52 +49,50 @@ type WithUserCmd = Either String WithCmd
 
 type CustomTargets = [String]
 
--- | The current package list(s) organized by mode and build target
-data PackageState
-    = DefaultModeState (Maybe DefaultModePkgs)
-    | ListModeState ListModePkgs
-    | RAModeState AllPkgs RAModePkgs
+-- | The set of packages that are currently broken and need to be rebuilt,
+--   as reported by @ghc-pkg check@. These may or may not equate to the
+--   'Target', depending on which mode @haskell-updater@ is running in.
+data PendingPackages
+    = InvalidPending InvalidPkgs
+    | AllPending AllPkgs
     deriving (Show, Eq, Ord)
 
-data DefaultModePkgs
-    = DefaultInvalid InvalidPkgs
-    | DefaultAll AllPkgs
+-- | The "targets" passed to the package manager, for instance package atoms
+--   or set strings.
+data Target
+    = TargetInvalid InvalidPkgs
+    | TargetAll AllPkgs
+    | CustomTarget String
     deriving (Show, Eq, Ord)
 
-data ListModePkgs
-    = ListInvalid InvalidPkgs
-    | ListAll AllPkgs
-    deriving (Show, Eq, Ord)
+type RunHistory = Seq.Seq (Set.Set Package, ExitCode)
 
-data RAModePkgs
-    = RAModeInvalid InvalidPkgs
-    | RAModeAll
-    | RAModeWorld InvalidPkgs
-    | RAModeCustom CustomTargets InvalidPkgs
-    deriving (Show, Eq, Ord)
+data LoopType
+      -- | Loop until there are no pending packages left. Carries a
+      --   'Set' of pending packages that were present during previous runs.
+      --   Fails if the current 'PendingPackages' matches any in this set,
+      --   as this means one or more packages are failing due to reasons other
+      --   than broken dependencies.
+      --
+      --   This is the default "classic" behavior of @haskell-updater@
+    = UntilNoPending
 
-class HasTargets t where
-    targetPkgs :: t -> Set.Set Package
+      -- | Loop until there is no change in the current pending packages
+      --   compared to the last run. Succeeds or fails based on the 'ExitCode'
+      --   of the last run and the current run. This is useful for modes where
+      --   it is possible to start out with no 'PendingPackages', but some may
+      --   appear later as packages are updated and break their dependencies.
+      --
+      --   Used by e.g. @--mode=reinstall-atoms@.
+    | UntilNoChange
 
-instance HasTargets PackageState where
-    targetPkgs (DefaultModeState ps) = targetPkgs ps
-    targetPkgs (ListModeState ps) = targetPkgs ps
-    targetPkgs (RAModeState _ (RAModeInvalid ps)) = getPkgs ps
-    targetPkgs (RAModeState ps RAModeAll) = getPkgs ps
-    targetPkgs (RAModeState _ (RAModeWorld _)) = Set.empty
-    targetPkgs (RAModeState _ (RAModeCustom _ _)) = Set.empty
-
-instance HasTargets DefaultModePkgs where
-    targetPkgs (DefaultInvalid ps) = getPkgs ps
-    targetPkgs (DefaultAll ps) = getPkgs ps
-
-instance HasTargets ListModePkgs where
-    targetPkgs (ListInvalid ps) = getPkgs ps
-    targetPkgs (ListAll ps) = getPkgs ps
-
-instance HasTargets t => HasTargets (Maybe t) where
-    targetPkgs (Just ps) = targetPkgs ps
-    targetPkgs Nothing = Set.empty
+      -- | Run once and do not loop. This is useful for modes where no
+      --   valuable information can be gleaned by comparing 'PendingPackages'
+      --   of separate runs.
+      --
+      --   Used by e.g. @--target=all@.
+    | NoLoop
+    deriving (Show, Eq, Ord, Enum, Bounded)
 
 newtype InvalidPkgs = InvalidPkgs (Set.Set Package)
     deriving (Show, Eq, Ord)
@@ -112,3 +111,7 @@ instance PackageSet AllPkgs where
 
 instance PackageSet () where
     getPkgs () = Set.empty
+
+instance PackageSet PendingPackages where
+    getPkgs (InvalidPending p) = getPkgs p
+    getPkgs (AllPending p) = getPkgs p
