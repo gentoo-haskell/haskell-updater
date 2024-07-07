@@ -135,7 +135,7 @@ buildCmd mpm fs (ExtraRawArgs rawArgs) userArgs pending extraTargets =
     )
   where
     excl = case pm of
-        Portage -> usepkgExclude pending
+        Portage -> ["--usepkg=n"]
         _ -> []
     targs = printPkg <$> Set.toList (getPkgs pending)
     pm = toPkgManager mpm
