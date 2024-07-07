@@ -6,6 +6,7 @@
    @Distribution.Gentoo.Types.HUMode@).
  -}
 
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -39,53 +40,51 @@ mkHUMode cmdLine raw
     | cmdLineHelp cmdLine = pure Mode.HelpMode
     | cmdLineVersion cmdLine = pure Mode.VersionMode
     | otherwise = do
-        let pkgMgr = cmdLinePkgManager cmdLine
-        mPkgMgr <- go pkgMgr
+        mPkgMgr <- mkPkgManager (cmdLinePkgManager cmdLine)
         pure $ Mode.RunMode runModifier mPkgMgr
   where
-    go :: PkgManager -> Either String Mode.PkgManager
-    go pkgMgr = case (pkgMgr, cmdLineMode cmdLine, cmdLineTarget cmdLine) of
-        (Portage, ReinstallAtomsMode, Right WorldTarget) -> pure
-            $ Mode.Portage $ Right $ Mode.ReinstallAtomsMode
-            $ Right $ Mode.WorldTarget
-        (Portage, ReinstallAtomsMode, Left targs) -> pure
-            $ Mode.Portage $ Right $ Mode.ReinstallAtomsMode
-            $ Right $ Mode.CustomTargets targs
-        (Portage, _, Right WorldTarget) -> Left
-            "\"world\" target is only valid with reinstall-atoms mode"
-        (Portage, _, Left _) -> Left
-            "custom targets are only valid with reinstall-atoms mode"
-        (Portage, ReinstallAtomsMode, Right targ) -> pure
-            $ Mode.Portage $ Right $ Mode.ReinstallAtomsMode
-            $ Left $ convTarget targ
-        (_, ReinstallAtomsMode, Right WorldTarget) -> Left
-           "\"world\" target is only valid with portage package manager"
-        (_, _, Right WorldTarget) -> Left $ unwords
-            [ "\"world\" target is only valid with reinstall-atoms mode and portage"
-            , "package manager"]
-        (_, _, Left _) -> Left $ unwords
-            [ "custom targets are only valid with reinstall-atoms mode and portage"
-            , "package manager"]
-        (_, ReinstallAtomsMode, _) -> Left
-            "reinstall-atoms mode is only valid with portage package manager"
-        (_, mode, Right targ) -> pure $ convPkgMgr pkgMgr mode targ
+    mkPkgManager :: PkgManager -> Either String Mode.PkgManager
+    mkPkgManager = \case
+        Portage -> Mode.Portage <$> mkPortageMode (cmdLineMode cmdLine)
+        PkgCore -> Mode.PkgCore <$> mkMode (cmdLineMode cmdLine)
+        Paludis -> Mode.Paludis <$> mkMode (cmdLineMode cmdLine)
+        CustomPM pm -> Mode.CustomPM pm <$> mkMode (cmdLineMode cmdLine)
+        pm@(InvalidPM _) -> Left $
+            "Invalid package manager in mkHUMode: " ++ show pm
 
-    convPkgMgr :: PkgManager -> RunMode -> BuildTarget -> Mode.PkgManager
-    convPkgMgr Portage mode targ = Mode.Portage $ Left $ convMode mode targ
-    convPkgMgr Paludis mode targ = Mode.Paludis $ convMode mode targ
-    convPkgMgr PkgCore mode targ = Mode.PkgCore $ convMode mode targ
-    convPkgMgr (CustomPM pm) mode targ = Mode.CustomPM pm $ convMode mode targ
-    convPkgMgr _ _ _ = error "Undefined behavior in convPkgMgr"
+    mkMode :: RunMode -> Either String Mode.RunMode
+    mkMode = \case
+        BasicMode -> Mode.BasicMode <$> mkTarget (cmdLineTarget cmdLine)
+        ListMode -> Mode.ListMode <$> mkTarget (cmdLineTarget cmdLine)
+        ReinstallAtomsMode -> Left
+            "reinstall-atoms mode is only supported by the portage package manager"
 
-    convMode :: RunMode -> BuildTarget -> Mode.RunMode
-    convMode BasicMode targ = Mode.BasicMode (convTarget targ)
-    convMode ListMode targ = Mode.ListMode (convTarget targ)
-    convMode _ _ = error "Undefined behavior in convMode"
+    mkPortageMode
+        :: RunMode
+        -> Either String (Either Mode.RunMode Mode.ReinstallAtomsMode)
+    mkPortageMode = \case
+        BasicMode -> Left . Mode.BasicMode <$> mkTarget (cmdLineTarget cmdLine)
+        ListMode -> Left . Mode.ListMode <$> mkTarget (cmdLineTarget cmdLine)
+        ReinstallAtomsMode -> Right . Mode.ReinstallAtomsMode
+            <$> mkRATarget (cmdLineTarget cmdLine)
 
-    convTarget :: BuildTarget -> Mode.Target
-    convTarget OnlyInvalid = Mode.OnlyInvalid
-    convTarget AllInstalled = Mode.AllInstalled
-    convTarget _ = error "Undefined behavior in convTarget"
+    mkTarget :: Either CustomTargets BuildTarget -> Either String Mode.Target
+    mkTarget = \case
+        Right OnlyInvalid -> Right Mode.OnlyInvalid
+        Right AllInstalled -> Right Mode.AllInstalled
+        Right WorldTarget -> Left
+            "world target is only supported in reinstall-atoms mode"
+        Left _ -> Left
+            "custom targets are only supported in reinstall-atoms mode"
+
+    mkRATarget
+        :: Either CustomTargets BuildTarget
+        -> Either String (Either Mode.Target Mode.ReinstallAtomsTarget)
+    mkRATarget = Right . \case
+        Right OnlyInvalid -> Left Mode.OnlyInvalid
+        Right AllInstalled -> Left Mode.AllInstalled
+        Right WorldTarget -> Right Mode.WorldTarget
+        Left cts -> Right $ Mode.CustomTargets cts
 
     runModifier :: RunModifier
     runModifier = RM
@@ -205,6 +204,3 @@ options =
                             -- Drop new BuildTargets in favor of old custom targets
                             (Right _, Left ss) -> Left ss
         in old { cmdLineTarget = newT }
-
-
-
