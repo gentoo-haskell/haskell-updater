@@ -28,6 +28,8 @@ import Distribution.Gentoo.Types
 import qualified Distribution.Gentoo.Types.HUMode as Mode
 import Output
 
+-- | Process arguments from the command line. Returns an error string if the
+--   user provided incorrect or unknown options.
 parseArgs :: PkgManager -> RawPMArgs -> Either String (CmdLineArgs, RawPMArgs)
 parseArgs defPM args = case getOpt' Permute options args of
     (_, _, _, errs@(_:_)) -> Left $ unwords $ "Errors in arguments:" : errs
@@ -35,6 +37,8 @@ parseArgs defPM args = case getOpt' Permute options args of
     (fs, raw, _, _) ->
         (,raw) <$> foldr (>=>) pure fs (defCmdLineArgs defPM)
 
+-- | Parse processed command line arguments into a 'Mode.HUMode'. Returns an
+--   error string if the user supplied non-compatible option combinations.
 mkHUMode :: CmdLineArgs -> RawPMArgs -> Either String Mode.HUMode
 mkHUMode cmdLine raw
     | cmdLineHelp cmdLine = pure Mode.HelpMode
@@ -52,6 +56,7 @@ mkHUMode cmdLine raw
         pm@(InvalidPM _) -> Left $
             "Invalid package manager in mkHUMode: " ++ show pm
 
+    -- Logic for parsing modes for non-portage package managers
     mkMode :: RunMode -> Either String Mode.RunMode
     mkMode = \case
         BasicMode -> Mode.BasicMode <$> mkTarget (cmdLineTarget cmdLine)
@@ -59,32 +64,65 @@ mkHUMode cmdLine raw
         ReinstallAtomsMode -> Left
             "reinstall-atoms mode is only supported by the portage package manager"
 
-    mkPortageMode
-        :: RunMode
-        -> Either String (Either Mode.RunMode Mode.ReinstallAtomsMode)
-    mkPortageMode = \case
-        BasicMode -> Left . Mode.BasicMode <$> mkTarget (cmdLineTarget cmdLine)
-        ListMode -> Left . Mode.ListMode <$> mkTarget (cmdLineTarget cmdLine)
-        ReinstallAtomsMode -> Right . Mode.ReinstallAtomsMode
-            <$> mkRATarget (cmdLineTarget cmdLine)
-
+    -- Logic for parsing targets for non-portage package managers
     mkTarget :: Either CustomTargets BuildTarget -> Either String Mode.Target
     mkTarget = \case
         Right OnlyInvalid -> Right Mode.OnlyInvalid
         Right AllInstalled -> Right Mode.AllInstalled
+        Right PreservedRebuild -> Left $
+            "preserved-rebuild target is only supported by the portage \
+            \package manager"
         Right WorldTarget -> Left
             "world target is only supported in reinstall-atoms mode"
         Left _ -> Left
             "custom targets are only supported in reinstall-atoms mode"
 
-    mkRATarget
+    -- Logic for parsing modes for portage
+    mkPortageMode
+        :: RunMode
+        -> Either String Mode.PortageMode
+    mkPortageMode = \case
+        BasicMode -> Mode.PortageBasicMode
+            <$> mkPortageBasicTarget (cmdLineTarget cmdLine)
+        ListMode -> Mode.PortageListMode
+            <$> mkPortageTarget (cmdLineTarget cmdLine)
+        ReinstallAtomsMode -> Mode.ReinstallAtomsMode
+            <$> mkPortageRATarget (cmdLineTarget cmdLine)
+
+    -- Logic for parsing targets for portage's basic mode
+    mkPortageBasicTarget
+        :: Either CustomTargets BuildTarget
+        -> Either String (Either Mode.PortageBasicTarget Mode.Target)
+    mkPortageBasicTarget = \case
+        Right PreservedRebuild -> Right $ Left Mode.PreservedRebuild
+        targ -> Right <$> mkPortageTarget targ
+
+    -- Logic for parsing targets for portage's reinstall-atoms mode
+    mkPortageRATarget
         :: Either CustomTargets BuildTarget
         -> Either String (Either Mode.Target Mode.ReinstallAtomsTarget)
-    mkRATarget = Right . \case
-        Right OnlyInvalid -> Left Mode.OnlyInvalid
-        Right AllInstalled -> Left Mode.AllInstalled
-        Right WorldTarget -> Right Mode.WorldTarget
-        Left cts -> Right $ Mode.CustomTargets cts
+    mkPortageRATarget = \case
+        Right WorldTarget -> Right $ Right $
+            if cmdLineWorldFull cmdLine
+                then Mode.WorldFullTarget
+                else Mode.WorldTarget
+        Left cts -> Right $ Right $ Mode.CustomTargets cts
+        targ -> Left <$> mkPortageTarget targ
+
+    -- Logic for parsing targets for portage's list mode; also common logic
+    -- for parsing targets, between portage's basic and reinstall-atoms modes
+    mkPortageTarget
+        :: Either CustomTargets BuildTarget
+        -> Either String Mode.Target
+    mkPortageTarget = \case
+        Right OnlyInvalid -> Right Mode.OnlyInvalid
+        Right AllInstalled -> Right Mode.AllInstalled
+        Right PreservedRebuild -> Left
+            "preserved-rebuild target is only supported in basic mode"
+        Right WorldTarget -> Left
+            "world target is only supported in reinstall-atoms mode"
+        Left _ -> Left
+            "custom targets are only supported in reinstall-atoms mode"
 
     runModifier :: RunModifier
     runModifier = RM
@@ -140,6 +178,16 @@ options =
         ) $      "alias for --package-manager=portage"
          ++ " \\\n          --target=" ++ argString WorldTarget
          ++ " \\\n          --mode=" ++ argString ReinstallAtomsMode
+    , Option [] ["world-full"]
+        (naUpdate $ \c -> updateTarget (Right WorldTarget) c
+            { cmdLinePkgManager = Portage
+            , cmdLineMode = ReinstallAtomsMode
+            , cmdLineWorldFull = True
+            }
+        ) $ "alias for --world -- --newuse --with-bdeps=y"
+    , Option [] ["preserved-rebuild"]
+        (naUpdate $ updateTarget (Right PreservedRebuild))
+        $ "alias for --target=" ++ argString PreservedRebuild
     , Option ['T'] ["custom-target"]
         (ReqArg
             (\s c -> pure $ updateTarget (Left s) c

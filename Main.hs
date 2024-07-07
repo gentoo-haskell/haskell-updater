@@ -84,16 +84,18 @@ runUpdater rm pkgMgr userArgs = do
     systemInfo rm pkgMgr userArgs
     (ps, ts, bps) <- getPackageState v pkgMgr
     case runMode pkgMgr of
-        Left (ListMode _) -> do
-            mapM_ (putStrLn . printPkg) (getPkgs ps)
-            success v "done!"
+        Left (ListMode _) -> listPkgs ps
+        Right (PortageListMode _) -> listPkgs ps
         _ -> case getLoopType pkgMgr of
             UntilNoPending -> loopUntilNoPending ps ts bps Seq.empty
             UntilNoChange -> loopUntilNoChange ps ts bps Seq.empty
             NoLoop -> buildPkgs rm rawArgs ps ts bps >>= exitWith
     success v "done!"
   where
-    v = verbosity rm
+    listPkgs :: PendingPackages -> IO ()
+    listPkgs ps = do
+        mapM_ (putStrLn . printPkg) (getPkgs ps)
+        success v "done!"
 
     loopUntilNoPending :: UpdaterLoop
     loopUntilNoPending ps ts bps hist
@@ -125,6 +127,7 @@ runUpdater rm pkgMgr userArgs = do
         die "Updater stuck in the loop and can't progress"
 
     rawArgs = getExtraRawArgs pkgMgr
+    v = verbosity rm
 
 -- | Determines which function 'buildPkgs' will run to get the package-manager
 --   command.
@@ -141,11 +144,13 @@ getPackageState
     -> IO (PendingPackages, Set.Set Types.Target, BuildPkgs)
 getPackageState v pkgMgr =
     case runMode pkgMgr of
-        Left mode -> do
-            p <- case getTarget mode of
-                OnlyInvalid -> InvalidPending <$> getInvalid
-                AllInstalled -> AllPending <$> getAll
-            pure (p, Set.empty, BuildNormal pkgMgr)
+        Left mode -> fromRunMode mode
+        Right (PortageBasicMode (Left PreservedRebuild)) -> do
+            p <- InvalidPending <$> getInvalid
+            let s = Set.singleton $ CustomTarget "@preserved-rebuild"
+            pure (p, s, BuildNormal pkgMgr)
+        Right (PortageBasicMode (Right targ)) -> fromRunMode (BasicMode targ)
+        Right (PortageListMode targ) -> fromRunMode (ListMode targ)
         Right (ReinstallAtomsMode targ) -> do
             aps <- getAll
             (p,ts) <- case targ of
@@ -158,10 +163,20 @@ getPackageState v pkgMgr =
                     ips <- getInvalid
                     let ts = case t of
                             WorldTarget -> Set.singleton (CustomTarget "@world")
+                            WorldFullTarget -> Set.singleton (CustomTarget "@world")
                             CustomTargets cts -> Set.fromList (CustomTarget <$> cts)
                     pure (InvalidPending ips, ts)
             pure (p, ts, BuildRAMode aps)
   where
+    fromRunMode
+        :: RunMode
+        -> IO (PendingPackages, Set.Set Types.Target, BuildPkgs)
+    fromRunMode mode = do
+        p <- case getTarget mode of
+            OnlyInvalid -> InvalidPending <$> getInvalid
+            AllInstalled -> AllPending <$> getAll
+        pure (p, Set.empty, BuildNormal pkgMgr)
+
     getInvalid = do
         say v "Searching for packages installed with a different version of GHC."
         say v ""
@@ -279,15 +294,13 @@ systemInfo rm pkgMgr rawArgs = do
     v = verbosity rm
 
     (m, ts) = case runMode pkgMgr of
-        Left mode -> case mode of
-            BasicMode OnlyInvalid ->
-                (CmdLine.BasicMode, argString CmdLine.OnlyInvalid)
-            BasicMode AllInstalled ->
-                (CmdLine.BasicMode, argString CmdLine.AllInstalled)
-            ListMode OnlyInvalid ->
-                (CmdLine.ListMode, argString CmdLine.OnlyInvalid)
-            ListMode AllInstalled ->
-                (CmdLine.ListMode, argString CmdLine.AllInstalled)
+        Left mode -> printRunMode mode
+        Right (PortageBasicMode (Left PreservedRebuild)) ->
+            (CmdLine.BasicMode, argString CmdLine.PreservedRebuild)
+        Right (PortageBasicMode (Right targ)) ->
+            printRunMode (BasicMode targ)
+        Right (PortageListMode targ) ->
+            printRunMode (ListMode targ)
         Right (ReinstallAtomsMode targ) -> case targ of
             Left OnlyInvalid ->
                 (CmdLine.ReinstallAtomsMode, argString CmdLine.OnlyInvalid)
@@ -295,8 +308,22 @@ systemInfo rm pkgMgr rawArgs = do
                 (CmdLine.ReinstallAtomsMode, argString CmdLine.AllInstalled)
             Right WorldTarget ->
                 (CmdLine.ReinstallAtomsMode, argString CmdLine.WorldTarget)
+            Right WorldFullTarget ->
+                (CmdLine.ReinstallAtomsMode, unwords
+                    [argString CmdLine.WorldTarget, "(full)"])
             Right (CustomTargets cts) ->
                 (CmdLine.ReinstallAtomsMode, unwords cts)
+
+    printRunMode :: RunMode -> (CmdLine.RunMode, String)
+    printRunMode = \case
+        BasicMode OnlyInvalid ->
+            (CmdLine.BasicMode, argString CmdLine.OnlyInvalid)
+        BasicMode AllInstalled ->
+            (CmdLine.BasicMode, argString CmdLine.AllInstalled)
+        ListMode OnlyInvalid ->
+            (CmdLine.ListMode, argString CmdLine.OnlyInvalid)
+        ListMode AllInstalled ->
+            (CmdLine.ListMode, argString CmdLine.AllInstalled)
 
 -- -----------------------------------------------------------------------------
 -- Utility functions

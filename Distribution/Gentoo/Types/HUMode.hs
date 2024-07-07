@@ -17,7 +17,8 @@ module Distribution.Gentoo.Types.HUMode
     , runMode
     , Target(..)
     , getTarget
-    , ReinstallAtomsMode(..)
+    , PortageMode(..)
+    , PortageBasicTarget(..)
     , ReinstallAtomsTarget(..)
     , getLoopType
     , getExtraRawArgs
@@ -32,7 +33,7 @@ data HUMode
     deriving (Eq, Ord, Show)
 
 data PkgManager
-    = Portage (Either RunMode ReinstallAtomsMode)
+    = Portage PortageMode
     | PkgCore RunMode
     | Paludis RunMode
     | CustomPM String RunMode
@@ -48,17 +49,23 @@ data Target
     | AllInstalled
     deriving (Eq, Ord, Show)
 
-newtype ReinstallAtomsMode
-    = ReinstallAtomsMode (Either Target ReinstallAtomsTarget)
+data PortageMode
+    = PortageBasicMode (Either PortageBasicTarget Target)
+    | PortageListMode Target
+    | ReinstallAtomsMode (Either Target ReinstallAtomsTarget)
+    deriving (Eq, Ord, Show)
+
+data PortageBasicTarget = PreservedRebuild
     deriving (Eq, Ord, Show)
 
 data ReinstallAtomsTarget
     = WorldTarget
+    | WorldFullTarget
     | CustomTargets CustomTargets
     deriving (Eq, Ord, Show)
 
-runMode :: PkgManager -> Either RunMode ReinstallAtomsMode
-runMode (Portage rm) = rm
+runMode :: PkgManager -> Either RunMode PortageMode
+runMode (Portage rm) = Right rm
 runMode (PkgCore rm) = Left rm
 runMode (Paludis rm) = Left rm
 runMode (CustomPM _ rm) = Left rm
@@ -74,18 +81,31 @@ getTarget (ListMode t) = t
 --   sense.
 getLoopType :: PkgManager -> LoopType
 getLoopType = \case
-    -- Even @--mode=reinstall-atoms@ should not loop if @--target=all@ is set
-    Portage (Right (ReinstallAtomsMode (Left AllInstalled))) -> NoLoop
-    Portage (Right (ReinstallAtomsMode _)) -> UntilNoChange
-    Portage (Left mode) -> fromRunMode mode
+    -- @--mode=reinstall-atoms@ should not loop if @--target=all@ is set
+    Portage (ReinstallAtomsMode (Left AllInstalled)) -> NoLoop
+
+    -- otherwise, it should always use UntilNoChange
+    Portage (ReinstallAtomsMode _) -> UntilNoChange
+
+    -- @--target=preserved-rebuild@ should use UntilNoChange
+    Portage (PortageBasicMode (Left PreservedRebuild)) -> UntilNoChange
+
+    -- The rest follow a standard pattern
+    Portage (PortageBasicMode (Right t)) -> fromTarget t
+    Portage (PortageListMode _) -> NoLoop
     PkgCore mode -> fromRunMode mode
     Paludis mode -> fromRunMode mode
     CustomPM _ mode -> fromRunMode mode
   where
     fromRunMode :: RunMode -> LoopType
     fromRunMode = \case
-        BasicMode _ -> UntilNoPending
+        BasicMode t -> fromTarget t
         ListMode _ -> NoLoop
+
+    fromTarget :: Target -> LoopType
+    fromTarget = \case
+        OnlyInvalid -> UntilNoPending
+        AllInstalled -> NoLoop
 
 -- | Convert from the @haskell-updater@ ADT to 'ExtraRawArgs', hard-coded extra
 --   arguments that will be passed to the package manager.
@@ -93,4 +113,7 @@ getLoopType = \case
 --   Takes a 'PkgManager' as 'RunMode' is the only mode which runs a package
 --   manager.
 getExtraRawArgs :: PkgManager -> ExtraRawArgs
-getExtraRawArgs _ = ExtraRawArgs [] -- currently unused feature
+getExtraRawArgs = ExtraRawArgs . \case
+    Portage (ReinstallAtomsMode (Right WorldFullTarget)) ->
+        ["--newuse", "--with-bdeps=y"]
+    _ -> []

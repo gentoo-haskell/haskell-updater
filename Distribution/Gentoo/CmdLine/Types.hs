@@ -44,6 +44,7 @@ data CmdLineArgs = CmdLineArgs
     , cmdLineMode :: RunMode
     , cmdLineVerbosity :: Verbosity
     , cmdLineHelp :: Bool
+    , cmdLineWorldFull :: Bool
     } deriving (Show, Eq, Ord)
 
 defCmdLineArgs :: PkgManager -> CmdLineArgs
@@ -57,11 +58,13 @@ defCmdLineArgs defPM = CmdLineArgs
     BasicMode
     Normal
     False
+    False
 
 data BuildTarget
     = OnlyInvalid -- ^ Default
     | AllInstalled -- ^ Rebuild every haskell package
     | WorldTarget -- ^ Target @world portage set
+    | PreservedRebuild -- ^ Append @preserved-rebuild set
     deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 data RunMode
@@ -105,6 +108,11 @@ instance CmdlineOpt BuildTarget where
         ( "world"
         , Just $ "@world set (only valid with portage package\n"
               ++ "manager and reinstall-atoms mode)"
+        )
+    argInfo PreservedRebuild =
+        ( "preserved-rebuild"
+        , Just $ "Append @preserved-rebuild set (only valid with\n"
+              ++ "portage package manager and basic mode)"
         )
 
     optName _ = "target"
