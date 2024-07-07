@@ -121,8 +121,9 @@ buildCmd
     -> ExtraRawArgs -- ^ hard-coded extra flags
     -> RawPMArgs -- ^ User-supplied flags
     -> PendingPackages -- ^ Packages to be rebuilt
+    -> Set.Set Target -- ^ Extra targets
     -> (String, [String])
-buildCmd mpm fs (ExtraRawArgs rawArgs) userArgs pending =
+buildCmd mpm fs (ExtraRawArgs rawArgs) userArgs pending extraTargets =
     (  pmCommand pm
     ,  defaultPMFlags pm
     ++ mapMaybe (flagRep pm) fs
@@ -130,6 +131,7 @@ buildCmd mpm fs (ExtraRawArgs rawArgs) userArgs pending =
     ++ userArgs
     ++ excl
     ++ targs
+    ++ printTargets extraTargets
     )
   where
     excl = case pm of
@@ -166,7 +168,7 @@ buildRACmd fs (ExtraRawArgs rawArgs) userArgs pending targets allPs =
     ++ userArgs
     ++ usepkgExclude allPs
     ++ reinst
-    ++ targs
+    ++ printTargets targets
     )
   where
     reinst =
@@ -174,12 +176,15 @@ buildRACmd fs (ExtraRawArgs rawArgs) userArgs pending targets allPs =
               | Set.null ps = []
               | otherwise = ["--reinstall-atoms", unwords (printPkg <$> Set.toList ps)]
         in raArgs (getPkgs pending)
-    targs = Set.toList $ foldr go Set.empty targets
-      where
-        go targ set = case targ of
-            TargetInvalid (InvalidPkgs p) -> foldr (Set.insert . printPkg) set p
-            TargetAll (AllPkgs p) -> foldr (Set.insert . printPkg) set p
-            CustomTarget t -> Set.insert t set
+
+-- | Print a set of targets, suitable for passing to a package manager
+printTargets :: Set.Set Target -> [String]
+printTargets targets = Set.toList $ foldr go Set.empty targets
+  where
+    go targ set = case targ of
+        TargetInvalid (InvalidPkgs p) -> foldr (Set.insert . printPkg) set p
+        TargetAll (AllPkgs p) -> foldr (Set.insert . printPkg) set p
+        CustomTarget t -> Set.insert t set
 
 -- | Generate strings using portage's @--usepkg-exclude@ flag. This filters out
 --   dev-haskell/* packages which can be specified using a wildcard, in order

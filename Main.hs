@@ -66,6 +66,13 @@ dumpHistory v historySeq = do
             | ((entry, ec), n) <- zip (toList historySeq) [1..]
             ]
 
+type UpdaterLoop
+    =  PendingPackages
+    -> Set.Set Types.Target
+    -> BuildPkgs
+    -> RunHistory
+    -> IO ()
+
 -- | Run the main part of @haskell-updater@ (e.g. not @--help@ or
 --   @--version@).
 runUpdater
@@ -75,47 +82,42 @@ runUpdater
     -> IO a
 runUpdater rm pkgMgr userArgs = do
     systemInfo rm pkgMgr userArgs
-    (ps, bps) <- getPackageState v pkgMgr
+    (ps, ts, bps) <- getPackageState v pkgMgr
     case runMode pkgMgr of
         Left (ListMode _) -> do
             mapM_ (putStrLn . printPkg) (getPkgs ps)
             success v "done!"
         _ -> case getLoopType pkgMgr of
-            UntilNoPending -> loopUntilNoPending ps bps Seq.empty
-            UntilNoChange -> loopUntilNoChange ps bps Seq.empty
-            NoLoop -> buildPkgs rm rawArgs ps bps >>= exitWith
+            UntilNoPending -> loopUntilNoPending ps ts bps Seq.empty
+            UntilNoChange -> loopUntilNoChange ps ts bps Seq.empty
+            NoLoop -> buildPkgs rm rawArgs ps ts bps >>= exitWith
     success v "done!"
   where
     v = verbosity rm
 
-    loopUntilNoPending :: PendingPackages -> BuildPkgs -> RunHistory -> IO ()
-    loopUntilNoPending ps bps hist
+    loopUntilNoPending :: UpdaterLoop
+    loopUntilNoPending ps ts bps hist
         | getPkgs ps `elem` (fst <$> toList hist) = alertStuck hist
         | Set.null (getPkgs ps) = alertDone
-        | otherwise = next loopUntilNoPending ps bps hist
+        | otherwise = next loopUntilNoPending ps ts bps hist
 
-    loopUntilNoChange :: PendingPackages -> BuildPkgs -> RunHistory -> IO ()
-    loopUntilNoChange ps bps hist = case viewr hist of
-        EmptyR -> next loopUntilNoChange ps bps hist
+    loopUntilNoChange :: UpdaterLoop
+    loopUntilNoChange ps ts bps hist = case viewr hist of
+        EmptyR -> next loopUntilNoChange ps ts bps hist
         (_ :> (past, pastEC))
             | getPkgs ps == past -> case pastEC of
                 ExitFailure _ -> alertStuck hist
                 ExitSuccess -> alertDone
-            | otherwise -> next loopUntilNoChange ps bps hist
+            | otherwise -> next loopUntilNoChange ps ts bps hist
 
-    next
-        :: (PendingPackages -> BuildPkgs -> RunHistory -> IO ())
-        -> PendingPackages
-        -> BuildPkgs
-        -> RunHistory
-        -> IO ()
-    next f ps bps hist = do
-        exitCode <- buildPkgs rm rawArgs ps bps
+    next :: UpdaterLoop -> UpdaterLoop
+    next f ps ts bps hist = do
+        exitCode <- buildPkgs rm rawArgs ps ts bps
 
         let hist' = hist |> (getPkgs ps, exitCode)
-        (ps', bps') <- getPackageState v pkgMgr
+        (ps', ts', bps') <- getPackageState v pkgMgr
 
-        f ps' bps' hist'
+        f ps' ts' bps' hist'
 
     alertDone = success (verbosity rm) "\nNothing to build!"
     alertStuck hist = do
@@ -128,19 +130,22 @@ runUpdater rm pkgMgr userArgs = do
 --   command.
 data BuildPkgs
     = BuildNormal Mode.PkgManager -- ^ @--mode=basic@
-    | BuildRAMode (Set.Set Types.Target) AllPkgs -- ^ @--mode=reinstall-atoms@
+    | BuildRAMode AllPkgs -- ^ @--mode=reinstall-atoms@
 
 -- | As needed, query @ghc-pkg check@ for broken packages, scan the filesystem
 --   for installed packages, and look for misc breakages. Return the results
---   summarized as 'PendingPackages' and 'BuildPkgs'.
-getPackageState :: Verbosity -> PkgManager -> IO (PendingPackages, BuildPkgs)
+--   summarized for use with 'buildPkgs'.
+getPackageState
+    :: Verbosity
+    -> PkgManager
+    -> IO (PendingPackages, Set.Set Types.Target, BuildPkgs)
 getPackageState v pkgMgr =
     case runMode pkgMgr of
         Left mode -> do
             p <- case getTarget mode of
                 OnlyInvalid -> InvalidPending <$> getInvalid
                 AllInstalled -> AllPending <$> getAll
-            pure (p, BuildNormal pkgMgr)
+            pure (p, Set.empty, BuildNormal pkgMgr)
         Right (ReinstallAtomsMode targ) -> do
             aps <- getAll
             (p,ts) <- case targ of
@@ -155,7 +160,7 @@ getPackageState v pkgMgr =
                             WorldTarget -> Set.singleton (CustomTarget "@world")
                             CustomTargets cts -> Set.fromList (CustomTarget <$> cts)
                     pure (InvalidPending ips, ts)
-            pure (p, BuildRAMode ts aps)
+            pure (p, ts, BuildRAMode aps)
   where
     getInvalid = do
         say v "Searching for packages installed with a different version of GHC."
@@ -215,16 +220,17 @@ buildPkgs
     :: RunModifier
     -> ExtraRawArgs
     -> PendingPackages
+    -> Set.Set Types.Target
     -> BuildPkgs
     -> IO ExitCode
-buildPkgs rm rawArgs pps bp = do
+buildPkgs rm rawArgs pps targets bp = do
     putStrLn ""
     runCmd (withCmd rm) cmd args
   where
     (cmd, args) = case bp of
         BuildNormal pkgMgr ->
-            buildCmd pkgMgr (flags rm) rawArgs (rawPMArgs rm) pps
-        BuildRAMode targets allPkgs ->
+            buildCmd pkgMgr (flags rm) rawArgs (rawPMArgs rm) pps targets
+        BuildRAMode allPkgs ->
             buildRACmd (flags rm) rawArgs (rawPMArgs rm) pps targets allPkgs
 
 -- -----------------------------------------------------------------------------
