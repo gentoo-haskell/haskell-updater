@@ -99,18 +99,30 @@ runUpdater rm pkgMgr userArgs = do
 
     loopUntilNoPending :: UpdaterLoop
     loopUntilNoPending ps ts bps hist
-        | getPkgs ps `elem` (fst <$> toList hist) = alertStuck hist
+        | getPkgs ps `elem` (fst <$> toList hist) = alertStuck hist Nothing
         | Set.null (getPkgs ps) = alertDone
         | otherwise = next loopUntilNoPending ps ts bps hist
 
     loopUntilNoChange :: UpdaterLoop
     loopUntilNoChange ps ts bps hist = case viewr hist of
         EmptyR -> next loopUntilNoChange ps ts bps hist
-        (_ :> (past, pastEC))
-            | getPkgs ps == past -> case pastEC of
-                ExitFailure _ -> alertStuck hist
+        (prevHist :> (lastPkgSet, lastEC))
+            | getPkgs ps == lastPkgSet -> case lastEC of
+                ExitFailure _
+                    -- Did it fail after one pass?
+                    | Seq.null prevHist -> alertStuck hist (Just stuckOnePass)
+                    | otherwise -> alertStuck hist Nothing
                 ExitSuccess -> alertDone
             | otherwise -> next loopUntilNoChange ps ts bps hist
+      where
+        -- This mostly comes up with the 'UntilNoChange' loop type, so we'll limit
+        -- it to that for now.
+        stuckOnePass =
+            [ "NOTE: The updater loop failed after one pass, with no changes to the state of"
+            , "broken Haskell packages on the system. This is often caused by the package"
+            , "manager failing during dependency resolution. Check the output to be sure."
+            ]
+
 
     next :: UpdaterLoop -> UpdaterLoop
     next f ps ts bps hist = do
@@ -122,9 +134,12 @@ runUpdater rm pkgMgr userArgs = do
         f ps' ts' bps' hist'
 
     alertDone = success (verbosity rm) "\nNothing to build!"
-    alertStuck hist = do
+
+    alertStuck hist maybeMsg = do
         dumpHistory v hist
-        die "Updater stuck in the loop and can't progress"
+        die $ unlines
+            $ "\nUpdater stuck in the loop and can't progress"
+            : maybe [] ("":) maybeMsg
 
     rawArgs = getExtraRawArgs pkgMgr
     v = verbosity rm
