@@ -129,13 +129,20 @@ runUpdater rm pkgMgr userArgs = do
 
 
     next :: UpdaterLoop -> UpdaterLoop
-    next f ps ts bps hist = do
-        exitCode <- buildPkgs rm rawArgs ps ts bps
+    next f ps ts bps hist
+        | all checkEmpty ts = alertDone
+        | otherwise = do
+            exitCode <- buildPkgs rm rawArgs ps ts bps
 
-        let hist' = hist |> (getPkgs ps, exitCode)
-        (ps', ts', bps') <- getPackageState v pkgMgr
+            let hist' = hist |> (getPkgs ps, exitCode)
+            (ps', ts', bps') <- getPackageState v pkgMgr
 
-        f ps' ts' bps' hist'
+            f ps' ts' bps' hist'
+      where
+        checkEmpty = \case
+            TargetInvalid s -> Set.null (getPkgs s)
+            TargetAll s -> Set.null (getPkgs s)
+            CustomTarget _ -> False
 
     alertDone = success (verbosity rm) "\nNothing to build!"
 
