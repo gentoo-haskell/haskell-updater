@@ -4,6 +4,7 @@
    General types needed for haskell-updater functionality
  -}
 
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Distribution.Gentoo.Types
@@ -11,7 +12,6 @@ module Distribution.Gentoo.Types
   , RawPMArgs
   , WithCmd(..)
   , WithUserCmd
-  , CustomTargets
   , PendingPackages(..)
   , Target(..)
   , RunHistory
@@ -47,8 +47,6 @@ data WithCmd = PrintAndRun
                deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 type WithUserCmd = Either String WithCmd
-
-type CustomTargets = [String]
 
 -- | The set of packages that are currently broken and need to be rebuilt,
 --   as reported by @ghc-pkg check@. These may or may not equate to the
@@ -101,10 +99,10 @@ newtype ExtraRawArgs = ExtraRawArgs [String]
     deriving (Show, Eq, Ord)
 
 newtype InvalidPkgs = InvalidPkgs (Set.Set Package)
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Semigroup, Monoid)
 
 newtype AllPkgs = AllPkgs (Set.Set Package)
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Semigroup, Monoid)
 
 class PackageSet t where
     getPkgs :: t -> Set.Set Package

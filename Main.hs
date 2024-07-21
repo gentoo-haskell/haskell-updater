@@ -19,10 +19,14 @@ import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.Types as Types
 import Distribution.Gentoo.Types.HUMode as Mode
+import Distribution.Gentoo.Util (These(..), toListNE)
 
 import           Control.Monad         (unless)
 import qualified Control.Monad         as CM
+import           Control.Monad.State   (StateT, evalStateT, get, put, liftIO)
+import           Data.Bifoldable       (bifoldMap)
 import           Data.Foldable         (toList)
+import qualified Data.List             as L
 import           Data.Sequence         (ViewR(..), viewr, (|>))
 import qualified Data.Sequence         as Seq
 import qualified Data.Set              as Set
@@ -166,21 +170,32 @@ getPackageState v pkgMgr =
             pure (p, s, BuildNormal pkgMgr)
         Right (PortageBasicMode (Right targ)) -> fromRunMode (BasicMode targ)
         Right (PortageListMode targ) -> fromRunMode (ListMode targ)
-        Right (ReinstallAtomsMode targ) -> do
-            aps <- getAll
+        Right (ReinstallAtomsMode targ) -> flip evalStateT Nothing $ do
+            aps <- liftIO getAll
+            let pending = \case
+                    OnlyInvalid -> withIPCache InvalidPending
+                    AllInstalled -> pure $ AllPending aps
+                normalTarg = \case
+                    OnlyInvalid -> withIPCache TargetInvalid
+                    AllInstalled -> pure $ TargetAll aps
+                extraTargs = bifoldMap
+                            (Set.singleton . \case
+                                WorldTarget -> CustomTarget "@world"
+                                WorldFullTarget -> CustomTarget "@world"
+                            )
+                            (Set.fromList . map CustomTarget . toListNE)
             (p,ts) <- case targ of
-                Left OnlyInvalid -> do
-                    ips <- getInvalid
-                    pure (InvalidPending ips, Set.singleton (TargetInvalid ips))
-                Left AllInstalled ->
-                    pure (AllPending aps, Set.singleton (TargetAll aps))
-                Right t -> do
-                    ips <- getInvalid
-                    let ts = case t of
-                            WorldTarget -> Set.singleton (CustomTarget "@world")
-                            WorldFullTarget -> Set.singleton (CustomTarget "@world")
-                            CustomTargets cts -> Set.fromList (CustomTarget <$> cts)
-                    pure (InvalidPending ips, ts)
+                These ta th -> do
+                    p <- pending ta
+                    nt <- normalTarg ta
+                    pure (p, Set.insert nt (extraTargs th))
+                This ta -> do
+                    p <- pending ta
+                    nt <- normalTarg ta
+                    pure (p, Set.singleton nt)
+                That th -> do
+                    p <- InvalidPending <$> liftIO getInvalid
+                    pure (p, extraTargs th)
             pure (p, ts, BuildRAMode aps)
   where
     fromRunMode
@@ -231,6 +246,16 @@ getPackageState v pkgMgr =
         say v $ "        # ghc-pkg recache"
         say v $ "    It will likely need one more 'haskell-updater' run."
         say v ""
+
+    withIPCache
+        :: (InvalidPkgs -> a)
+        -> StateT (Maybe InvalidPkgs) IO a
+    withIPCache f = fmap f $ get >>= \case
+        Nothing -> do
+            ips <- liftIO getInvalid
+            put (Just ips)
+            pure ips
+        Just ips -> pure ips
 
 runCmd :: WithCmd -> String -> [String] -> IO ExitCode
 runCmd m cmd args = case m of
@@ -302,32 +327,36 @@ systemInfo rm pkgMgr rawArgs = do
     say v $ "  * Package manager (PM): " ++ nameOfPM (toPkgManager pkgMgr)
     unless (null rawArgs) $
         say v $ "  * PM auxiliary arguments: " ++ unwords rawArgs
-    say v $ "  * Targets: " ++ ts
+    say v $ "  * Targets: " ++ L.intercalate ", " ts
     say v $ "  * Mode: " ++ argString m
     say v ""
   where
     v = verbosity rm
 
     (m, ts) = case runMode pkgMgr of
-        Left mode -> printRunMode mode
+        Left mode -> (:[]) <$> printRunMode mode
         Right (PortageBasicMode (Left PreservedRebuild)) ->
-            (CmdLine.BasicMode, argString CmdLine.PreservedRebuild)
+            (CmdLine.BasicMode, [argString CmdLine.PreservedRebuild])
         Right (PortageBasicMode (Right targ)) ->
-            printRunMode (BasicMode targ)
+            (:[]) <$> printRunMode (BasicMode targ)
         Right (PortageListMode targ) ->
-            printRunMode (ListMode targ)
-        Right (ReinstallAtomsMode targ) -> case targ of
-            Left OnlyInvalid ->
-                (CmdLine.ReinstallAtomsMode, argString CmdLine.OnlyInvalid)
-            Left AllInstalled ->
-                (CmdLine.ReinstallAtomsMode, argString CmdLine.AllInstalled)
-            Right WorldTarget ->
-                (CmdLine.ReinstallAtomsMode, argString CmdLine.WorldTarget)
-            Right WorldFullTarget ->
-                (CmdLine.ReinstallAtomsMode, unwords
-                    [argString CmdLine.WorldTarget, "(full)"])
-            Right (CustomTargets cts) ->
-                (CmdLine.ReinstallAtomsMode, unwords cts)
+            (:[]) <$> printRunMode (ListMode targ)
+        Right (ReinstallAtomsMode targ) ->
+            let strs = bifoldMap
+                    ((:[]) . \case
+                        OnlyInvalid -> argString CmdLine.OnlyInvalid
+                        AllInstalled -> argString CmdLine.AllInstalled
+                    )
+                    (bifoldMap
+                        ((:[]) . \case
+                            WorldTarget -> argString CmdLine.WorldTarget
+                            WorldFullTarget -> unwords
+                                [argString CmdLine.WorldTarget, "(full)"]
+                        )
+                        toListNE
+                    )
+                    targ
+            in (CmdLine.ReinstallAtomsMode, strs)
 
     printRunMode :: RunMode -> (CmdLine.RunMode, String)
     printRunMode = \case

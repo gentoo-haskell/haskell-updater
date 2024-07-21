@@ -18,7 +18,11 @@ module Distribution.Gentoo.CmdLine
   ) where
 
 import           Control.Monad         ((>=>))
+import qualified Data.List.NonEmpty as NE
+import           Data.Monoid (Ap(..))
+import           Data.Maybe (fromMaybe)
 import           Data.Proxy
+import           Data.Semigroup (Last(..), sconcat)
 import           System.Console.GetOpt
 
 import Distribution.Gentoo.CmdLine.Types
@@ -26,6 +30,7 @@ import Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
 import qualified Distribution.Gentoo.Types.HUMode as Mode
+import Distribution.Gentoo.Util (These(..), singletonNE)
 import Output
 
 -- | Process arguments from the command line. Returns an error string if the
@@ -59,13 +64,15 @@ mkHUMode cmdLine raw
     -- Logic for parsing modes for non-portage package managers
     mkMode :: RunMode -> Either String Mode.RunMode
     mkMode = \case
-        BasicMode -> Mode.BasicMode <$> mkTarget (cmdLineTarget cmdLine)
-        ListMode -> Mode.ListMode <$> mkTarget (cmdLineTarget cmdLine)
+        BasicMode -> Mode.BasicMode <$> go (cmdLineTargets cmdLine)
+        ListMode -> Mode.ListMode <$> go (cmdLineTargets cmdLine)
         ReinstallAtomsMode -> Left
             "reinstall-atoms mode is only supported by the portage package manager"
+      where
+        go = maybe (Right Mode.OnlyInvalid) (onlyLast mkTarget)
 
     -- Logic for parsing targets for non-portage package managers
-    mkTarget :: Either CustomTargets BuildTarget -> Either String Mode.Target
+    mkTarget :: Either CustomTarget BuildTarget -> Either String Mode.Target
     mkTarget = \case
         Right OnlyInvalid -> Right Mode.OnlyInvalid
         Right AllInstalled -> Right Mode.AllInstalled
@@ -83,15 +90,21 @@ mkHUMode cmdLine raw
         -> Either String Mode.PortageMode
     mkPortageMode = \case
         BasicMode -> Mode.PortageBasicMode
-            <$> mkPortageBasicTarget (cmdLineTarget cmdLine)
+            <$> withDefTarget
+                    (onlyLast mkPortageBasicTarget)
+                    maybeTargs
         ListMode -> Mode.PortageListMode
-            <$> mkPortageTarget (cmdLineTarget cmdLine)
+            <$> withDefTarget
+                    (onlyLast mkPortageTarget)
+                    maybeTargs
         ReinstallAtomsMode -> Mode.ReinstallAtomsMode
-            <$> mkPortageRATarget (cmdLineTarget cmdLine)
+            <$> withDefTarget mkPortageRATarget maybeTargs
+      where
+        maybeTargs = cmdLineTargets cmdLine
 
     -- Logic for parsing targets for portage's basic mode
     mkPortageBasicTarget
-        :: Either CustomTargets BuildTarget
+        :: Either CustomTarget BuildTarget
         -> Either String (Either Mode.PortageBasicTarget Mode.Target)
     mkPortageBasicTarget = \case
         Right PreservedRebuild -> Right $ Left Mode.PreservedRebuild
@@ -99,20 +112,20 @@ mkHUMode cmdLine raw
 
     -- Logic for parsing targets for portage's reinstall-atoms mode
     mkPortageRATarget
-        :: Either CustomTargets BuildTarget
-        -> Either String (Either Mode.Target Mode.ReinstallAtomsTarget)
-    mkPortageRATarget = \case
-        Right WorldTarget -> Right $ Right $
+        :: NE.NonEmpty (Either CustomTarget BuildTarget)
+        -> Either String Mode.RATargets
+    mkPortageRATarget = foldTargets $ \case
+        Left ct -> Right $ That $ That $ singletonNE ct
+        Right WorldTarget -> Right $ That $ This $
             if cmdLineWorldFull cmdLine
                 then Mode.WorldFullTarget
                 else Mode.WorldTarget
-        Left cts -> Right $ Right $ Mode.CustomTargets cts
-        targ -> Left <$> mkPortageTarget targ
+        targ -> This <$> mkPortageTarget targ
 
     -- Logic for parsing targets for portage's list mode; also common logic
     -- for parsing targets, between portage's basic and reinstall-atoms modes
     mkPortageTarget
-        :: Either CustomTargets BuildTarget
+        :: Either CustomTarget BuildTarget
         -> Either String Mode.Target
     mkPortageTarget = \case
         Right OnlyInvalid -> Right Mode.OnlyInvalid
@@ -134,6 +147,31 @@ mkHUMode cmdLine raw
         , rawPMArgs = raw
         , verbosity = cmdLineVerbosity cmdLine
         }
+
+    -- Uses the default target if none were specified on the command line
+    withDefTarget
+        :: (NE.NonEmpty (Either CustomTarget BuildTarget) -> a)
+        -> Maybe (NE.NonEmpty (Either CustomTarget BuildTarget))
+        -> a
+    withDefTarget f = f . fromMaybe (NE.singleton defTarget)
+      where
+        defTarget = Right OnlyInvalid
+
+    -- Uses 'Data.Semigroup.Last' to only grab the last target specified
+    onlyLast
+        :: Applicative f
+        => (a -> f b)
+        -> NE.NonEmpty a
+        -> f b
+    onlyLast f = fmap (getLast . sconcat . fmap Last) . traverse f
+
+    -- Uses 'Data.Monoid.Ap' to combine RATargets inside an Applicative
+    foldTargets
+        :: (Applicative f, Semigroup b)
+        => (a -> f b)
+        -> NE.NonEmpty a
+        -> f b
+    foldTargets f = getAp . sconcat . fmap (Ap . f)
 
 options :: [OptDescr (CmdLineArgs -> Either String CmdLineArgs)]
 options =
@@ -196,9 +234,8 @@ options =
                 }
             )
         "target")
-        $  "Use a custom target. May be given multiple times.\n"
-        ++ "    Enables portage PM and reinstall-targets mode.\n"
-        ++ "    Will override any non-custom targets."
+        "Use a custom target. May be given multiple times.\n\
+        \    Enables portage PM and reinstall-targets mode."
     , Option []    ["mode"]
         (ReqArg (fromCmdline (\a c -> c { cmdLineMode = a })) "mode")
         (argHelp (Proxy @RunMode))
@@ -237,18 +274,8 @@ options =
             \    which can be overriden with the \"PACKAGE_MANAGER\"\n\
             \    environment variable."
 
-    -- Custom targets always override BuildTargets
-    -- New custom targets are appended to old custom targets
-    -- New BuildTargets override old BuildTargets
-    updateTarget :: Either String BuildTarget -> CmdLineArgs -> CmdLineArgs
+    updateTarget :: Either CustomTarget BuildTarget -> CmdLineArgs -> CmdLineArgs
     updateTarget new old =
-        let newT = case (new, cmdLineTarget old) of
-                            -- Override old BuildTargets with new BuildTargets
-                            (Right t, Right _) -> Right t
-                            -- Append new custom target
-                            (Left s, Left ss) -> Left $ ss ++ [s]
-                            -- Drop old BuildTargets for new custom target
-                            (Left s, Right _) -> Left [s]
-                            -- Drop new BuildTargets in favor of old custom targets
-                            (Right _, Left ss) -> Left ss
-        in old { cmdLineTarget = newT }
+        let ne = NE.singleton new
+            newT = maybe ne (<> ne) (cmdLineTargets old)
+        in old { cmdLineTargets = Just newT }

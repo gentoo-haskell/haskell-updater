@@ -15,6 +15,7 @@ module Distribution.Gentoo.CmdLine.Types
     , defCmdLineArgs
       -- * sub types
     , BuildTarget(..)
+    , CustomTarget
     , RunMode(..)
     , CmdlineOpt(..)
       -- * getter functions
@@ -27,6 +28,7 @@ module Distribution.Gentoo.CmdLine.Types
 
 import           Data.Char             (toLower)
 import qualified Data.List             as L
+import qualified Data.List.NonEmpty    as NE
 import           Data.Proxy
 
 import Distribution.Gentoo.PkgManager.Types
@@ -40,10 +42,12 @@ data CmdLineArgs = CmdLineArgs
     , cmdLineNoDeep :: Bool
     , cmdLineVersion :: Bool
     , cmdLineAction :: WithCmd
-    , cmdLineTarget :: Either CustomTargets BuildTarget
+    , cmdLineTargets :: Maybe (NE.NonEmpty (Either CustomTarget BuildTarget))
     , cmdLineMode :: RunMode
     , cmdLineVerbosity :: Verbosity
     , cmdLineHelp :: Bool
+      -- This would be better off as another BuildTarget option, but then we
+      -- would lose the cool CmdlineOpt automagic
     , cmdLineWorldFull :: Bool
     } deriving (Show, Eq, Ord)
 
@@ -54,7 +58,7 @@ defCmdLineArgs defPM = CmdLineArgs
     False
     False
     PrintAndRun
-    (Right OnlyInvalid)
+    Nothing
     BasicMode
     Normal
     False
@@ -66,6 +70,8 @@ data BuildTarget
     | WorldTarget -- ^ Target @world portage set
     | PreservedRebuild -- ^ Append @preserved-rebuild set
     deriving (Eq, Ord, Show, Read, Enum, Bounded)
+
+type CustomTarget = String
 
 data RunMode
     = BasicMode
@@ -117,7 +123,8 @@ instance CmdlineOpt BuildTarget where
 
     optName _ = "target"
     optDescription _ =
-        "Choose the type of packages for the PM to target"
+        "Choose the type of packages for the PM to target.\n\
+        \May be given multiple times in reinstall-atoms mode."
     optDefault _ = OnlyInvalid
 
 instance CmdlineOpt RunMode where
