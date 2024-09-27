@@ -60,6 +60,7 @@ common all
 
 executable haskell-updater
   import:           all
+  hs-source-dirs:   src/
   main-is:          Main.hs
   other-modules:
     Distribution.Gentoo.CmdLine
