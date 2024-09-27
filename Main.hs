@@ -49,11 +49,26 @@ main = do args <- getArgs
 
 runAction :: CmdLine.CmdLineArgs -> RawPMArgs -> IO a
 runAction cmdArgs rawArgs = do
+
     mode <- either die pure $ mkHUMode cmdArgs rawArgs
     case mode of
         HelpMode -> help
         VersionMode -> version
-        RunMode rm pm -> runUpdater rm pm rawArgs
+        RunMode rm pm -> do
+
+            let v = verbosity rm
+            vsay v "Command line args:"
+            getArgs >>= vsay v . show
+            vsay v $ show cmdArgs
+            vsay v ""
+            vsay v "Internal representation for haskell-updater mode:"
+            vsay v $ show (RunMode rm pm)
+            vsay v ""
+            vsay v "Looping strategy:"
+            vsay v $ show (getLoopType pm)
+            vsay v ""
+
+            runUpdater rm pm rawArgs
 
 dumpHistory :: Verbosity -> RunHistory -> IO ()
 dumpHistory v historySeq = do
@@ -71,6 +86,9 @@ dumpHistory v historySeq = do
             | ((entry, ec), n) <- zip (toList historySeq) [1..]
             ]
 
+-- | An action that controls the looping mechanism inside 'runUpdater'. This
+--   holds the logic for what action to take after running @emerge@ (e.g. exit
+--   with success/error or continue to the next iteration).
 type UpdaterLoop
     =  BuildPkgs
     -> RunHistory
