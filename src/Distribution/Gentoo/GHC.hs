@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {- |
    Module      : Distribution.Gentoo.GHC
    Description : Find GHC-related breakages on Gentoo.
@@ -8,16 +7,19 @@
    This module defines helper functions to find broken packages in
    GHC, or else find packages installed with older versions of GHC.
  -}
+
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module Distribution.Gentoo.GHC
        ( ghcVersion
        , ghcLoc
        , ghcLibDir
-       , oldGhcPkgs
-       , brokenPkgs
-       , allInstalledPackages
+       , MonadPkgState(..)
        , unCPV
        ) where
 
+import Distribution.Gentoo.Env
 import Distribution.Gentoo.Util
 import Distribution.Gentoo.Packages
 
@@ -31,6 +33,7 @@ import Distribution.Text(display)
 import Distribution.Types.LibraryName (LibraryName(..))
 
 -- Other imports
+import Control.Monad.State.Strict (StateT, lift)
 import Data.Char(isDigit)
 import Data.Either(partitionEithers)
 import Data.Maybe
@@ -221,16 +224,43 @@ checkPkgs (pns, gentoo_cnfs) = do
 
 -- -----------------------------------------------------------------------------
 
--- Finding packages installed with other versions of GHC
-oldGhcPkgs :: (MonadSay m, MonadIO m) => m (Set.Set Package)
-oldGhcPkgs =
-    do thisGhc <- liftIO ghcLibDir
-       vsay $ "oldGhcPkgs ghc lib: " ++ show thisGhc
-       let thisGhc' = BS.pack thisGhc
-       -- It would be nice to do this, but we can't assume
-       -- some crazy user hasn't deleted one of these dirs
-       -- libFronts' <- filterM doesDirectoryExist libFronts
-       notGHC <$> checkLibDirs thisGhc' libFronts
+-- | Monads that can retrieve the state of Haskell packages on the
+--   system (or other database).
+--
+--   This is primarily used with the 'Env' monad. Making this a class helps
+--   with the creation of test mockups.
+class Monad m => MonadPkgState m where
+    -- | Finding packages installed with other versions of GHC
+    oldGhcPkgs :: m (Set.Set Package)
+
+    -- | Finding broken packages in this install of GHC.
+    brokenPkgs :: m ([Package],[CabalPV],[FilePath])
+
+    -- | All registered Haskell packages on the system
+    allInstalledPkgs :: m (Set.Set Package)
+
+
+instance MonadIO m => MonadPkgState (EnvT m) where
+    oldGhcPkgs =
+        do thisGhc <- liftIO ghcLibDir
+           vsay $ "oldGhcPkgs ghc lib: " ++ show thisGhc
+           let thisGhc' = BS.pack thisGhc
+           -- It would be nice to do this, but we can't assume
+           -- some crazy user hasn't deleted one of these dirs
+           -- libFronts' <- filterM doesDirectoryExist libFronts
+           notGHC <$> checkLibDirs thisGhc' libFronts
+
+    brokenPkgs = brokenConfs >>= checkPkgs
+
+    allInstalledPkgs = do libDir <- liftIO ghcLibDir
+                          let libDir' = BS.pack libDir
+                          fmap notGHC $ liftIO $ pkgsHaveContent
+                                $ hasDirMatching (==libDir')
+
+instance MonadPkgState m => MonadPkgState (StateT s m) where
+    oldGhcPkgs = lift oldGhcPkgs
+    brokenPkgs = lift brokenPkgs
+    allInstalledPkgs = lift allInstalledPkgs
 
 -- Find packages installed by other versions of GHC in this possible
 -- library directory.
@@ -280,10 +310,6 @@ libFronts = map BS.pack
                  return $ "/" </> "usr" </> lib
 
 -- -----------------------------------------------------------------------------
-
--- Finding broken packages in this install of GHC.
-brokenPkgs :: (MonadSay m, MonadIO m) => m ([Package],[CabalPV],[FilePath])
-brokenPkgs = brokenConfs >>= checkPkgs
 
 -- .conf files from broken packages of this GHC version
 -- Returns two lists:
@@ -418,9 +444,3 @@ getRegisteredTwice = do
             _ -> False
 
 -- -----------------------------------------------------------------------------
-
-allInstalledPackages :: IO (Set.Set Package)
-allInstalledPackages = do libDir <- ghcLibDir
-                          let libDir' = BS.pack libDir
-                          fmap notGHC $ pkgsHaveContent
-                                       $ hasDirMatching (==libDir')

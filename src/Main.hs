@@ -16,7 +16,7 @@ import Distribution.Gentoo.CmdLine
 import qualified Distribution.Gentoo.CmdLine.Types as CmdLine -- (CmdLineArgs, BuildTarget)
 import Distribution.Gentoo.Env
 import Distribution.Gentoo.GHC
-    ( oldGhcPkgs, brokenPkgs, allInstalledPackages
+    ( MonadPkgState (oldGhcPkgs, brokenPkgs, allInstalledPkgs)
     , ghcVersion, ghcLibDir, ghcLoc, unCPV
     )
 import Distribution.Gentoo.Packages
@@ -323,7 +323,7 @@ getPackageState = askPkgManager >>= \pkgMgr ->
             AllInstalled -> AllPending <$> getAll
         pure $ BuildNormal pkgMgr ps Set.empty
 
-    getInvalid :: (MonadSay m, MonadIO m) => m InvalidPkgs
+    getInvalid :: (MonadSay m, MonadPkgState m) => m InvalidPkgs
     getInvalid = do
         say "Searching for packages installed with a different version of GHC."
         say ""
@@ -340,11 +340,11 @@ getPackageState = askPkgManager >>= \pkgMgr ->
 
         return $ InvalidPkgs $ old <> broken'
 
-    getAll :: (MonadSay m, MonadIO m) => m AllPkgs
+    getAll :: (MonadSay m, MonadPkgState m) => m AllPkgs
     getAll = do
         say "Searching for packages installed with the current version of GHC."
         say ""
-        pkgs <- liftIO allInstalledPackages
+        pkgs <- allInstalledPkgs
         pkgListPrintLn "installed" pkgs
         return $ AllPkgs pkgs
 
