@@ -235,7 +235,9 @@ runUpdater = do
 -- | As needed, query @ghc-pkg check@ for broken packages, scan the filesystem
 --   for installed packages, and look for misc breakages. Return the results
 --   summarized for use with 'buildPkgs'.
-getPackageState :: EnvT IO BuildPkgs
+getPackageState
+    :: (MonadSay m, MonadPkgState m, HasPkgManager m)
+    => m BuildPkgs
 getPackageState = askPkgManager >>= \pkgMgr ->
     case runMode pkgMgr of
         Left mode -> fromRunMode mode
@@ -274,8 +276,9 @@ getPackageState = askPkgManager >>= \pkgMgr ->
             pure $ BuildRAMode p ts aps
   where
     fromRunMode
-        :: RunMode
-        -> EnvT IO BuildPkgs
+        :: (MonadSay m, MonadPkgState m, HasPkgManager m)
+        => RunMode
+        -> m BuildPkgs
     fromRunMode mode = askPkgManager >>= \pkgMgr -> do
         ps <- case getTarget mode of
             OnlyInvalid -> InvalidPending <$> getInvalid
@@ -325,8 +328,9 @@ getPackageState = askPkgManager >>= \pkgMgr ->
         say ""
 
     withIPCache
-        :: (InvalidPkgs -> a)
-        -> StateT (Maybe InvalidPkgs) (EnvT IO) a
+        :: (MonadSay m, MonadPkgState m)
+        => (InvalidPkgs -> a)
+        -> StateT (Maybe InvalidPkgs) m a
     withIPCache f = fmap f $ get >>= \case
         Nothing -> do
             ips <- getInvalid
