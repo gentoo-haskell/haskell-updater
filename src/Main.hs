@@ -14,6 +14,7 @@ module Main (main) where
 
 import Distribution.Gentoo.CmdLine
 import qualified Distribution.Gentoo.CmdLine.Types as CmdLine -- (CmdLineArgs, BuildTarget)
+import Distribution.Gentoo.Env
 import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
@@ -23,7 +24,8 @@ import Distribution.Gentoo.Util (These(..), toListNE)
 
 import           Control.Monad         (unless, when)
 import qualified Control.Monad         as CM
-import           Control.Monad.State   (StateT, evalStateT, get, put, liftIO)
+import           Control.Monad.State.Strict
+    (StateT, evalStateT, get, put, MonadIO, liftIO)
 import           Data.Bifoldable       (bifoldMap)
 import           Data.Foldable         (toList)
 import qualified Data.List             as L
@@ -54,32 +56,31 @@ runAction cmdArgs rawArgs = do
     case mode of
         HelpMode -> help
         VersionMode -> version
-        RunMode rm pm -> do
+        RunMode rm pm -> flip runEnvT (rm, pm, rawArgs) $ do
 
-            let v = verbosity rm
-            vsay v "Command line args:"
-            getArgs >>= vsay v . show
-            vsay v $ show cmdArgs
-            vsay v ""
-            vsay v "Internal representation for haskell-updater mode:"
-            vsay v $ show (RunMode rm pm)
-            vsay v ""
-            vsay v "Looping strategy:"
-            vsay v $ show (getLoopType pm)
-            vsay v ""
+            vsay "Command line args:"
+            liftIO getArgs >>= vsay . show
+            vsay $ show cmdArgs
+            vsay ""
+            vsay "Internal representation for haskell-updater mode:"
+            vsay $ show (RunMode rm pm)
+            vsay ""
+            vsay "Looping strategy:"
+            vsay $ show (getLoopType pm)
+            vsay ""
 
-            runUpdater rm pm rawArgs
+            runUpdater
 
-dumpHistory :: Verbosity -> RunHistory -> IO ()
-dumpHistory v historySeq = do
-    say v "Updater's past history:"
-    CM.forM_ historyList $ \(n, entry, ec) -> say v $ unwords
+dumpHistory :: MonadSay m => RunHistory -> m ()
+dumpHistory historySeq = do
+    say "Updater's past history:"
+    CM.forM_ historyList $ \(n, entry, ec) -> say $ unwords
         [ "Pass"
         , show n ++ ":"
         , show $ printPkg <$> Set.toList entry
         , show ec
         ]
-    say v ""
+    say ""
   where historyList :: [(Int, Set.Set Package, ExitCode)]
         historyList =
             [ (n, entry, ec)
@@ -89,21 +90,20 @@ dumpHistory v historySeq = do
 -- | An action that controls the looping mechanism inside 'runUpdater'. This
 --   holds the logic for what action to take after running @emerge@ (e.g. exit
 --   with success/error or continue to the next iteration).
-type UpdaterLoop
+type UpdaterLoop m
     =  BuildPkgs
     -> RunHistory
-    -> IO ()
+    -> m ()
 
 -- | Run the main part of @haskell-updater@ (e.g. not @--help@ or
 --   @--version@).
 runUpdater
-    :: RunModifier
-    -> PkgManager
-    -> RawPMArgs
-    -> IO a
-runUpdater rm pkgMgr userArgs = do
-    systemInfo rm pkgMgr userArgs
-    bps <- getPackageState v pkgMgr
+    :: EnvT IO a
+runUpdater = do
+    pkgMgr <- askPkgManager
+    userArgs <- askRawPMArgs
+    systemInfo pkgMgr userArgs
+    bps <- getPackageState
     let ps = buildPkgsPending bps
     case runMode pkgMgr of
         Left (ListMode _) -> listPkgs ps
@@ -111,15 +111,15 @@ runUpdater rm pkgMgr userArgs = do
         _ -> case getLoopType pkgMgr of
             UntilNoPending -> loopUntilNoPending bps Seq.empty
             UntilNoChange -> loopUntilNoChange bps Seq.empty
-            NoLoop -> buildPkgs rm rawArgs bps >>= exitWith
-    success v "done!"
+            NoLoop -> buildPkgs bps >>= liftIO . exitWith
+    success "done!"
   where
-    listPkgs :: PendingPackages -> IO ()
+    listPkgs :: PendingPackages -> EnvT IO ()
     listPkgs ps = do
-        mapM_ (putStrLn . printPkg) (getPkgs ps)
-        success v "done!"
+        mapM_ (liftIO . putStrLn . printPkg) (getPkgs ps)
+        success "done!"
 
-    loopUntilNoPending :: UpdaterLoop
+    loopUntilNoPending :: UpdaterLoop (EnvT IO)
     loopUntilNoPending bps hist
         -- Stop when there are no more pending packages
         | Set.null (getPkgs ps) = alertDone Nothing
@@ -133,7 +133,7 @@ runUpdater rm pkgMgr userArgs = do
 
         where ps = buildPkgsPending bps
 
-    loopUntilNoChange :: UpdaterLoop
+    loopUntilNoChange :: UpdaterLoop (EnvT IO)
     loopUntilNoChange bps hist = case viewr hist of
         -- If there is no history, the first update still needs to be run
         EmptyR -> updateAndContinue loopUntilNoChange bps hist
@@ -198,14 +198,14 @@ runUpdater rm pkgMgr userArgs = do
             ]
 
     -- Rebuild the packages then retrieve fresh package state
-    updateAndContinue :: UpdaterLoop -> UpdaterLoop
+    updateAndContinue :: UpdaterLoop (EnvT IO) -> UpdaterLoop (EnvT IO)
     updateAndContinue f bps hist = do
         -- Exit with failure if there are no targets for the package manager
         when (emptyTargets (buildPkgsTargets bps)) alertNoTargets
 
-        exitCode <- buildPkgs rm rawArgs bps
+        exitCode <- buildPkgs bps
 
-        bps' <- getPackageState v pkgMgr
+        bps' <- getPackageState
         let ps = buildPkgsPending bps'
             hist' = hist |> (getPkgs ps, exitCode)
 
@@ -217,21 +217,17 @@ runUpdater rm pkgMgr userArgs = do
         TargetAll ps -> Set.null (getPkgs ps)
         CustomTarget _ -> False
 
-    alertDone maybeMsg = success (verbosity rm)
-        $ unlines
+    alertDone maybeMsg = success $ unlines
         $ "Nothing to build!"
         : maybe [] ("":) maybeMsg
 
     alertStuck hist maybeMsg = do
-        dumpHistory v hist
-        die $ unlines
+        dumpHistory hist
+        liftIO $ die $ unlines
             $ "Updater stuck in the loop and can't progress"
             : maybe [] ("":) maybeMsg
 
-    alertNoTargets = die "No targets to pass to the package manager!"
-
-    rawArgs = getExtraRawArgs pkgMgr
-    v = verbosity rm
+    alertNoTargets = liftIO $ die "No targets to pass to the package manager!"
 
 -- | Determines which function 'buildPkgs' will run to get the package-manager
 --   command.
@@ -277,11 +273,8 @@ buildPkgsPending = \case
 -- | As needed, query @ghc-pkg check@ for broken packages, scan the filesystem
 --   for installed packages, and look for misc breakages. Return the results
 --   summarized for use with 'buildPkgs'.
-getPackageState
-    :: Verbosity
-    -> PkgManager
-    -> IO BuildPkgs
-getPackageState v pkgMgr =
+getPackageState :: EnvT IO BuildPkgs
+getPackageState = askPkgManager >>= \pkgMgr ->
     case runMode pkgMgr of
         Left mode -> fromRunMode mode
         Right (PortageBasicMode (Left PreservedRebuild)) -> do
@@ -291,7 +284,7 @@ getPackageState v pkgMgr =
         Right (PortageBasicMode (Right targ)) -> fromRunMode (BasicMode targ)
         Right (PortageListMode targ) -> fromRunMode (ListMode targ)
         Right (ReinstallAtomsMode targ) -> flip evalStateT Nothing $ do
-            aps <- liftIO getAll
+            aps <- getAll
             let pending = \case
                     OnlyInvalid -> withIPCache InvalidPending
                     AllInstalled -> pure $ AllPending aps
@@ -314,65 +307,67 @@ getPackageState v pkgMgr =
                     nt <- normalTarg ta
                     pure (p, Set.singleton nt)
                 That th -> do
-                    p <- InvalidPending <$> liftIO getInvalid
+                    p <- InvalidPending <$> getInvalid
                     pure (p, extraTargs th)
             pure $ BuildRAMode p ts aps
   where
     fromRunMode
         :: RunMode
-        -> IO BuildPkgs
-    fromRunMode mode = do
+        -> EnvT IO BuildPkgs
+    fromRunMode mode = askPkgManager >>= \pkgMgr -> do
         ps <- case getTarget mode of
             OnlyInvalid -> InvalidPending <$> getInvalid
             AllInstalled -> AllPending <$> getAll
         pure $ BuildNormal pkgMgr ps Set.empty
 
+    getInvalid :: (MonadSay m, MonadIO m) => m InvalidPkgs
     getInvalid = do
-        say v "Searching for packages installed with a different version of GHC."
-        say v ""
-        old <- oldGhcPkgs v
-        pkgListPrintLn v "old" old
+        say "Searching for packages installed with a different version of GHC."
+        say ""
+        old <- oldGhcPkgs
+        pkgListPrintLn "old" old
 
-        say v "Searching for Haskell libraries with broken dependencies."
-        say v ""
-        (broken, unknown_packages, unknown_files) <- brokenPkgs v
+        say "Searching for Haskell libraries with broken dependencies."
+        say ""
+        (broken, unknown_packages, unknown_files) <- brokenPkgs
         let broken' = Set.fromList broken
         printUnknownPackagesLn (map unCPV unknown_packages)
         printUnknownFilesLn unknown_files
-        pkgListPrintLn v "broken" (notGHC broken')
+        pkgListPrintLn "broken" (notGHC broken')
 
         return $ InvalidPkgs $ old <> broken'
 
+    getAll :: (MonadSay m, MonadIO m) => m AllPkgs
     getAll = do
-        say v "Searching for packages installed with the current version of GHC."
-        say v ""
-        pkgs <- allInstalledPackages
-        pkgListPrintLn v "installed" pkgs
+        say "Searching for packages installed with the current version of GHC."
+        say ""
+        pkgs <- liftIO allInstalledPackages
+        pkgListPrintLn "installed" pkgs
         return $ AllPkgs pkgs
 
     printUnknownPackagesLn [] = return ()
     printUnknownPackagesLn ps = do
-        say v "The following packages are orphan (not installed by your package manager):"
-        printList v id ps
-        say v ""
+        say "The following packages are orphan (not installed by your package manager):"
+        printList id ps
+        say ""
     printUnknownFilesLn [] = return ()
     printUnknownFilesLn fs = do
-        say v $ "The following files are orphan (not installed by your package manager):"
-        printList v id fs
-        say v $ "It is strongly advised to remove orphans:"
-        say v $ "    One of known sources of orphans is packages installed before 01 Jan 2015."
-        say v $ "    If you know it's your case you can easily remove such files:"
-        say v $ "        # rm -v -- `qfile -o $(ghc --print-libdir)/package.conf.d/*.conf $(ghc --print-libdir)/gentoo/*.conf`"
-        say v $ "        # ghc-pkg recache"
-        say v $ "    It will likely need one more 'haskell-updater' run."
-        say v ""
+        say "The following files are orphan (not installed by your package manager):"
+        printList id fs
+        say "It is strongly advised to remove orphans:"
+        say "    One of known sources of orphans is packages installed before 01 Jan 2015."
+        say "    If you know it's your case you can easily remove such files:"
+        say "        # rm -v -- `qfile -o $(ghc --print-libdir)/package.conf.d/*.conf $(ghc --print-libdir)/gentoo/*.conf`"
+        say "        # ghc-pkg recache"
+        say "    It will likely need one more 'haskell-updater' run."
+        say ""
 
     withIPCache
         :: (InvalidPkgs -> a)
-        -> StateT (Maybe InvalidPkgs) IO a
+        -> StateT (Maybe InvalidPkgs) (EnvT IO) a
     withIPCache f = fmap f $ get >>= \case
         Nothing -> do
-            ips <- liftIO getInvalid
+            ips <- getInvalid
             put (Just ips)
             pure ips
         Just ips -> pure ips
@@ -392,29 +387,29 @@ runCommand     :: String -> [String] -> IO ExitCode
 runCommand cmd args = rawSystem cmd args
 
 buildPkgs
-    :: RunModifier
-    -> ExtraRawArgs
-    -> BuildPkgs
-    -> IO ExitCode
-buildPkgs rm rawArgs bp = do
-    putStrLn ""
-    runCmd (withCmd rm) cmd args
-  where
-    (cmd, args) = case bp of
-        BuildNormal pkgMgr _ _ ->
-            let targs = buildPkgsTargets bp
-            in buildCmd pkgMgr (flags rm) rawArgs (rawPMArgs rm) targs
-        BuildRAMode pps targs allPkgs ->
-            buildRACmd (flags rm) rawArgs (rawPMArgs rm) pps targs allPkgs
+    :: BuildPkgs
+    -> EnvT IO ExitCode
+buildPkgs bp = do
+    rm <- askRunModifier
+    pm <- askPkgManager
+    let rawArgs = getExtraRawArgs pm
+    let (cmd, args) = case bp of
+            BuildNormal pkgMgr _ _ ->
+                let targs = buildPkgsTargets bp
+                in buildCmd pkgMgr (flags rm) rawArgs (rawPMArgs rm) targs
+            BuildRAMode pps targs allPkgs ->
+                buildRACmd (flags rm) rawArgs (rawPMArgs rm) pps targs allPkgs
+    liftIO $ putStrLn ""
+    liftIO $ runCmd (withCmd rm) cmd args
 
 -- -----------------------------------------------------------------------------
 -- Printing information.
 
 help :: IO a
-help = progInfo >>= success Normal
+help = progInfo >>= sayIO . success
 
 version :: IO a
-version = fmap (++ '-' : showVersion Paths.version) getProgName >>= success Normal
+version = fmap (++ '-' : showVersion Paths.version) getProgName >>= sayIO . success
 
 progInfo :: IO String
 progInfo = do pName <- getProgName
@@ -430,28 +425,26 @@ progInfo = do pName <- getProgName
                            , "Options:"]
 
 systemInfo
-    :: RunModifier
-    -> PkgManager
+    :: (MonadSay m, MonadIO m)
+    => PkgManager
     -> RawPMArgs
-    -> IO ()
-systemInfo rm pkgMgr rawArgs = do
-    ver    <- ghcVersion
-    pName  <- getProgName
+    -> m ()
+systemInfo pkgMgr rawArgs = do
+    ver    <- liftIO ghcVersion
+    pName  <- liftIO getProgName
     let pVer = showVersion Paths.version
-    pLoc   <- ghcLoc
-    libDir <- ghcLibDir
-    say v $ "Running " ++ pName ++ "-" ++ pVer ++ " using GHC " ++ ver
-    say v $ "  * Executable: " ++ pLoc
-    say v $ "  * Library directory: " ++ libDir
-    say v $ "  * Package manager (PM): " ++ nameOfPM (toPkgManager pkgMgr)
+    pLoc   <- liftIO ghcLoc
+    libDir <- liftIO ghcLibDir
+    say $ "Running " ++ pName ++ "-" ++ pVer ++ " using GHC " ++ ver
+    say $ "  * Executable: " ++ pLoc
+    say $ "  * Library directory: " ++ libDir
+    say $ "  * Package manager (PM): " ++ nameOfPM (toPkgManager pkgMgr)
     unless (null rawArgs) $
-        say v $ "  * PM auxiliary arguments: " ++ unwords rawArgs
-    say v $ "  * Targets: " ++ L.intercalate ", " ts
-    say v $ "  * Mode: " ++ argString m
-    say v ""
+        say $ "  * PM auxiliary arguments: " ++ unwords rawArgs
+    say $ "  * Targets: " ++ L.intercalate ", " ts
+    say $ "  * Mode: " ++ argString m
+    say ""
   where
-    v = verbosity rm
-
     (m, ts) = case runMode pkgMgr of
         Left mode -> (:[]) <$> printRunMode mode
         Right (PortageBasicMode (Left PreservedRebuild)) ->
@@ -491,9 +484,9 @@ systemInfo rm pkgMgr rawArgs = do
 -- -----------------------------------------------------------------------------
 -- Utility functions
 
-success :: Verbosity -> String -> IO a
-success v msg = do say v msg
-                   exitSuccess
+success :: (MonadSay m, MonadIO m) => String -> m a
+success msg = do say msg
+                 liftIO exitSuccess
 
 die     :: String -> IO a
 die msg = do putErrLn ("ERROR: " ++ msg)

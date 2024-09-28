@@ -10,7 +10,6 @@
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 
 module Distribution.Gentoo.Types.HUMode
     ( HUMode(..)

@@ -5,14 +5,22 @@
 
    Fancy output facility.
 -}
+
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+
 module Output (
                 pkgListPrintLn
               , printList
+              , MonadSay(..)
               , say
               , vsay
+              , SayIO(..)
               , Verbosity(..)
               ) where
 
+import Control.Monad.State.Strict
 import qualified Data.Set as Set
 import System.IO (hPutStrLn, stderr)
 
@@ -24,38 +32,61 @@ data Verbosity = Quiet
                | Verbose
      deriving (Eq, Ord, Show, Read)
 
-say :: Verbosity -> String -> IO ()
-say verb_l msg =
-    case verb_l of
-        Quiet   -> return ()
-        Normal  -> hPutStrLn stderr msg
-        Verbose -> hPutStrLn stderr msg
+-- | Monads that have an environment that stores the specified verbosity level,
+--   and can output messages
+class Monad m => MonadSay m where
+    outputLn :: String -> m () -- ^ Output a line
+    askVerbosity :: m Verbosity
 
-vsay :: Verbosity -> String -> IO ()
-vsay verb_l msg =
-    case verb_l of
+say :: MonadSay m => String -> m ()
+say msg = askVerbosity >>= \case
+        Quiet   -> return ()
+        Normal  -> outputLn msg
+        Verbose -> outputLn msg
+
+vsay :: MonadSay m => String -> m ()
+vsay msg = askVerbosity >>= \case
         Quiet   -> return ()
         Normal  -> return ()
-        Verbose -> hPutStrLn stderr msg
+        Verbose -> outputLn msg
 
 -- Print a bullet list of values with one value per line.
-printList :: Verbosity -> (a -> String) -> [a] -> IO ()
-printList v f = mapM_ (say v . (++) "  * " . f)
+printList :: MonadSay m => (a -> String) -> [a] -> m ()
+printList f = mapM_ (say . (++) "  * " . f)
 
 -- Print a list of packages, with a description of what they are.
-pkgListPrintLn :: Verbosity -> String -> Set.Set Package -> IO ()
-pkgListPrintLn v desc pkgs
+pkgListPrintLn :: MonadSay m => String -> Set.Set Package -> m ()
+pkgListPrintLn desc pkgs
     | null pkgs = do
-        say v $ unwords ["No", desc, "packages found!"]
-        say v ""
-    | otherwise = case v of
+        say $ unwords ["No", desc, "packages found!"]
+        say ""
+    | otherwise = askVerbosity >>= \case
         Quiet -> pure ()
         Normal -> do
-            hPutStrLn stderr $ unwords
+            outputLn $ unwords
                 ["Found", show (Set.size pkgs), desc, "packages."]
-            hPutStrLn stderr ""
+            outputLn ""
         Verbose -> do
-            hPutStrLn stderr $ unwords
+            outputLn $ unwords
                 ["Found the following", desc, "packages:"]
-            printList v printPkg (Set.toList pkgs)
-            hPutStrLn stderr ""
+            printList printPkg (Set.toList pkgs)
+            outputLn ""
+
+-- | A simple wrapper for adding a basic 'MonadSay' instance to 'IO'.
+--   This always uses 'Normal' verbosity.
+--
+--   Note that we avoid directly adding a 'MonadSay' instance for 'IO', since
+--   this can cause the type-checker to miss certain mistakes (such as using
+--   @'liftIO' . 'vsay'@, which would choose the 'IO' instance, thus always
+--   using 'Normal' verbosity and ignoring the 'Verbosity' given via the
+--   command line).
+newtype SayIO a = SayIO { sayIO :: IO a }
+    deriving (Functor, Applicative, Monad, MonadIO)
+
+instance MonadSay SayIO where
+    outputLn = SayIO . hPutStrLn stderr
+    askVerbosity = pure Normal
+
+instance MonadSay m => MonadSay (StateT s m) where
+    outputLn = lift . outputLn
+    askVerbosity = lift askVerbosity

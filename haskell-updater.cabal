@@ -65,6 +65,7 @@ executable haskell-updater
   other-modules:
     Distribution.Gentoo.CmdLine
     Distribution.Gentoo.CmdLine.Types
+    Distribution.Gentoo.Env
     Distribution.Gentoo.GHC
     Distribution.Gentoo.Packages
     Distribution.Gentoo.PkgManager

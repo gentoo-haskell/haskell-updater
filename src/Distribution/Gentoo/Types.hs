@@ -4,8 +4,8 @@
    General types needed for haskell-updater functionality
  -}
 
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Distribution.Gentoo.Types
   ( RunModifier(..)
