@@ -41,7 +41,6 @@ import           System.Console.GetOpt
 import           System.Environment    (getArgs, getProgName)
 import           System.Exit           (ExitCode (..), exitSuccess, exitWith)
 import           System.IO             (hPutStrLn, stderr)
-import           System.Process        (rawSystem)
 
 import Output
 
@@ -232,46 +231,6 @@ runUpdater = do
 
     alertNoTargets = liftIO $ die "No targets to pass to the package manager!"
 
--- | Determines which function 'buildPkgs' will run to get the package-manager
---   command.
-data BuildPkgs
-    -- | Default mode
-    = BuildNormal
-        -- | the package manager that will be used
-        Mode.PkgManager
-        -- | Packages that will be rebuilt, passed to the PM as targets
-        PendingPackages
-        -- | Extra targets
-        (Set.Set Types.Target)
-    -- | @--mode=reinstall-atoms@
-    | BuildRAMode
-        -- | Packages that will be marked for rebuild via --reinstall-atoms
-        PendingPackages
-        -- | atoms/sets that the PM will be targeting
-        (Set.Set Types.Target)
-        -- | All installed Haskell packages (for use with @--usepkg-exclude@)
-        AllPkgs
-
--- | The set of targets that will be passed to the package manager. This mostly
---   matters for 'BuildNormal', since there are two sets that must be merged
---   for the final target set.
-buildPkgsTargets :: BuildPkgs -> Set.Set Types.Target
-buildPkgsTargets = \case
-    BuildNormal _ pps extraTargs ->
-        let pts = Set.singleton $ case pps of
-                InvalidPending ps -> TargetInvalid ps
-                AllPending as -> TargetAll as
-        in pts <> extraTargs
-    BuildRAMode _ targs _ -> targs
-
--- | Get the 'PendingPackages' from a 'BuildPkgs' constructor.
---
---   This is examined by the different looping strategies in order to monitor
---   progress and make choices about when to continue looping.
-buildPkgsPending :: BuildPkgs -> PendingPackages
-buildPkgsPending = \case
-    BuildNormal _ pps _ -> pps
-    BuildRAMode pps _ _ -> pps
 
 -- | As needed, query @ghc-pkg check@ for broken packages, scan the filesystem
 --   for installed packages, and look for misc breakages. Return the results
@@ -374,36 +333,6 @@ getPackageState = askPkgManager >>= \pkgMgr ->
             put (Just ips)
             pure ips
         Just ips -> pure ips
-
-runCmd :: WithCmd -> String -> [String] -> IO ExitCode
-runCmd m cmd args = case m of
-        RunOnly     ->                      runCommand cmd args
-        PrintOnly   -> putStrLn cmd_line >> exitSuccess
-        PrintAndRun -> putStrLn cmd_line >> runCommand cmd args
-  where
-    cmd_line = unwords (cmd : (showArg <$> args))
-    showArg s
-        | words s == [s] = s
-        | otherwise = show s -- Put quotes around args with spaces in them
-
-runCommand     :: String -> [String] -> IO ExitCode
-runCommand cmd args = rawSystem cmd args
-
-buildPkgs
-    :: BuildPkgs
-    -> EnvT IO ExitCode
-buildPkgs bp = do
-    rm <- askRunModifier
-    pm <- askPkgManager
-    let rawArgs = getExtraRawArgs pm
-    let (cmd, args) = case bp of
-            BuildNormal pkgMgr _ _ ->
-                let targs = buildPkgsTargets bp
-                in buildCmd pkgMgr (flags rm) rawArgs (rawPMArgs rm) targs
-            BuildRAMode pps targs allPkgs ->
-                buildRACmd (flags rm) rawArgs (rawPMArgs rm) pps targs allPkgs
-    liftIO $ putStrLn ""
-    liftIO $ runCmd (withCmd rm) cmd args
 
 -- -----------------------------------------------------------------------------
 -- Printing information.

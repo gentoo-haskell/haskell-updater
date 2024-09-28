@@ -18,21 +18,27 @@ module Distribution.Gentoo.PkgManager
        , defaultPMName
        , nameOfPM
        , toPkgManager
-       , buildCmd
-       , buildRACmd
+       , BuildPkgs(..)
+       , buildPkgsTargets
+       , buildPkgsPending
+       , buildPkgs
        ) where
 
+import Distribution.Gentoo.Env
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
 import qualified Distribution.Gentoo.Types.HUMode as Mode
 
+import Control.Monad.IO.Class
 import Data.Char(toLower)
 import Data.Maybe(mapMaybe, fromMaybe)
 import qualified Data.Map as M
 import Data.Map(Map)
 import qualified Data.Set as Set
 import System.Environment(getEnvironment)
+import System.Exit (ExitCode (..), exitSuccess)
+import System.Process (rawSystem)
 
 -- -----------------------------------------------------------------------------
 
@@ -114,6 +120,76 @@ toPkgManager (Mode.Portage _) = Portage
 toPkgManager (Mode.PkgCore _) = PkgCore
 toPkgManager (Mode.Paludis _) = Paludis
 toPkgManager (Mode.CustomPM s _) = CustomPM s
+
+-- | Determines which function 'buildPkgs' will run to get the package-manager
+--   command.
+data BuildPkgs
+    -- | Default mode
+    = BuildNormal
+        -- | the package manager that will be used
+        Mode.PkgManager
+        -- | Packages that will be rebuilt, passed to the PM as targets
+        PendingPackages
+        -- | Extra targets
+        (Set.Set Target)
+    -- | @--mode=reinstall-atoms@
+    | BuildRAMode
+        -- | Packages that will be marked for rebuild via --reinstall-atoms
+        PendingPackages
+        -- | atoms/sets that the PM will be targeting
+        (Set.Set Target)
+        -- | All installed Haskell packages (for use with @--usepkg-exclude@)
+        AllPkgs
+
+-- | The set of targets that will be passed to the package manager. This mostly
+--   matters for 'BuildNormal', since there are two sets that must be merged
+--   for the final target set.
+buildPkgsTargets :: BuildPkgs -> Set.Set Target
+buildPkgsTargets = \case
+    BuildNormal _ pps extraTargs ->
+        let pts = Set.singleton $ case pps of
+                InvalidPending ps -> TargetInvalid ps
+                AllPending as -> TargetAll as
+        in pts <> extraTargs
+    BuildRAMode _ targs _ -> targs
+
+-- | Get the 'PendingPackages' from a 'BuildPkgs' constructor.
+--
+--   This is examined by the different looping strategies in order to monitor
+--   progress and make choices about when to continue looping.
+buildPkgsPending :: BuildPkgs -> PendingPackages
+buildPkgsPending = \case
+    BuildNormal _ pps _ -> pps
+    BuildRAMode pps _ _ -> pps
+
+buildPkgs
+    :: MonadIO m
+    => BuildPkgs
+    -> EnvT m ExitCode
+buildPkgs bp = do
+    rm <- askRunModifier
+    rawArgs <- Mode.getExtraRawArgs <$> askPkgManager
+
+    let (cmd, args) = case bp of
+            BuildNormal pkgMgr _ _ ->
+                let targs = buildPkgsTargets bp
+                in buildCmd pkgMgr (flags rm) rawArgs (rawPMArgs rm) targs
+            BuildRAMode pps targs allPkgs ->
+                buildRACmd (flags rm) rawArgs (rawPMArgs rm) pps targs allPkgs
+
+    liftIO $ putStrLn ""
+    liftIO $ runCmd (withCmd rm) cmd args
+
+runCmd :: WithCmd -> String -> [String] -> IO ExitCode
+runCmd m cmd args = case m of
+    RunOnly     ->                      rawSystem cmd args
+    PrintOnly   -> putStrLn cmd_line >> exitSuccess
+    PrintAndRun -> putStrLn cmd_line >> rawSystem cmd args
+  where
+    cmd_line = unwords (cmd : (showArg <$> args))
+    showArg s
+        | words s == [s] = s
+        | otherwise = show s -- Put quotes around args with spaces in them
 
 buildCmd
     :: Mode.PkgManager
