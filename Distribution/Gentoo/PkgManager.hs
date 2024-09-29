@@ -120,24 +120,21 @@ buildCmd
     -> [PMFlag] -- ^ Basic flags
     -> ExtraRawArgs -- ^ hard-coded extra flags
     -> RawPMArgs -- ^ User-supplied flags
-    -> PendingPackages -- ^ Packages to be rebuilt
-    -> Set.Set Target -- ^ Extra targets
+    -> Set.Set Target -- ^ Packages to be rebuilt, and extra targets
     -> (String, [String])
-buildCmd mpm fs (ExtraRawArgs rawArgs) userArgs pending extraTargets =
+buildCmd mpm fs (ExtraRawArgs rawArgs) userArgs targs =
     (  pmCommand pm
     ,  defaultPMFlags pm
     ++ mapMaybe (flagRep pm) fs
     ++ rawArgs
     ++ userArgs
     ++ excl
-    ++ targs
-    ++ printTargets extraTargets
+    ++ printTargets targs
     )
   where
     excl = case pm of
         Portage -> ["--usepkg=n"]
         _ -> []
-    targs = printPkg <$> Set.toList (getPkgs pending)
     pm = toPkgManager mpm
 
 -- | Alternative version of 'buildCmd' which uses experimental @emerge@
