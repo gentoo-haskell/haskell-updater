@@ -46,8 +46,8 @@ printList v f = mapM_ (say v . (++) "  * " . f)
 pkgListPrintLn :: Verbosity -> String -> Set.Set Package -> IO ()
 pkgListPrintLn v desc pkgs
     | null pkgs = do
-        say v ""
         say v $ unwords ["No", desc, "packages found!"]
+        say v ""
     | otherwise = case v of
         Quiet -> pure ()
         Normal -> do

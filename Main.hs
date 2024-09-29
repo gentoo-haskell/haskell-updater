@@ -64,6 +64,7 @@ dumpHistory v historySeq = do
         , show $ printPkg <$> Set.toList entry
         , show ec
         ]
+    say v ""
   where historyList :: [(Int, Set.Set Package, ExitCode)]
         historyList =
             [ (n, entry, ec)
@@ -144,12 +145,12 @@ runUpdater rm pkgMgr userArgs = do
             TargetAll s -> Set.null (getPkgs s)
             CustomTarget _ -> False
 
-    alertDone = success (verbosity rm) "\nNothing to build!"
+    alertDone = success (verbosity rm) "Nothing to build!"
 
     alertStuck hist maybeMsg = do
         dumpHistory v hist
         die $ unlines
-            $ "\nUpdater stuck in the loop and can't progress"
+            $ "Updater stuck in the loop and can't progress"
             : maybe [] ("":) maybeMsg
 
     rawArgs = getExtraRawArgs pkgMgr
