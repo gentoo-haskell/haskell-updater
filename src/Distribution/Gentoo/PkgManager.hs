@@ -123,8 +123,9 @@ toPkgManager (Mode.PkgCore _) = PkgCore
 toPkgManager (Mode.Paludis _) = Paludis
 toPkgManager (Mode.CustomPM s _) = CustomPM s
 
--- | Determines which function 'buildPkgs' will run to get the package-manager
---   command.
+-- | A data type containing the information needed to pass to the package
+--   manager, such as targets. The constructor determines which function
+--   'buildPkgs' will run.
 data BuildPkgs
     -- | Default mode
     = BuildNormal

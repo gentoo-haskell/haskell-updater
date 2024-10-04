@@ -8,7 +8,9 @@
    packages to rebuild after a dep upgrade or a GHC upgrade.
 -}
 
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main (main) where
 
@@ -28,7 +30,7 @@ import Distribution.Gentoo.Util (These(..), toListNE)
 import           Control.Monad         (unless, when)
 import qualified Control.Monad         as CM
 import           Control.Monad.State.Strict
-    (StateT, evalStateT, get, put, MonadIO, liftIO)
+    (MonadState, StateT, evalStateT, get, put, MonadIO, liftIO)
 import           Data.Bifoldable       (bifoldMap)
 import           Data.Foldable         (toList)
 import qualified Data.List             as L
@@ -51,7 +53,7 @@ main = do args <- getArgs
               Left err -> die err
               Right (cmdArgs, rawArgs)  -> runAction cmdArgs rawArgs
 
-runAction :: CmdLine.CmdLineArgs -> RawPMArgs -> IO a
+runAction :: CmdLine.CmdLineArgs -> RawPMArgs -> IO ()
 runAction cmdArgs rawArgs = do
 
     mode <- either die pure $ mkHUMode cmdArgs rawArgs
@@ -71,7 +73,21 @@ runAction cmdArgs rawArgs = do
             vsay $ show (getLoopType pm)
             vsay ""
 
-            runUpdater
+            systemInfo pm rawArgs
+
+            bps <- getPackageState
+            let ps = buildPkgsPending bps
+
+            case runMode pm of
+                 Left (ListMode _) -> listPkgs ps
+                 Right (PortageListMode _) -> listPkgs ps
+                 _ -> evalStateT
+                    runUpdater
+                    (bps, Seq.empty)
+  where
+    listPkgs ps = do
+        mapM_ (liftIO . putStrLn . printPkg) (getPkgs ps)
+        success "done!"
 
 dumpHistory :: MonadSay m => RunHistory -> m ()
 dumpHistory historySeq = do
@@ -97,31 +113,35 @@ type UpdaterLoop m
     -> RunHistory
     -> m ()
 
--- | Run the main part of @haskell-updater@ (e.g. not @--help@ or
---   @--version@).
+-- | State between each run of an 'UpdaterLoop'
+type UpdateState =
+    ( BuildPkgs -- ^ Current targets and other info needed to run the PM
+    , RunHistory
+    )
+
+-- | Run the main part of @haskell-updater@ (e.g. not @--help@,
+--   @--version@, or list mode). This expects the initial 'UpdateState' to
+--   reflect the initial state of the system.
 runUpdater
-    :: EnvT IO a
+    :: forall m.
+        ( MonadSay m
+        , MonadPkgState m
+        , MonadWritePkgState m
+        , MonadIO m
+        , MonadState UpdateState m
+        , HasPkgManager m
+        )
+    => m ()
 runUpdater = do
     pkgMgr <- askPkgManager
-    userArgs <- askRawPMArgs
-    systemInfo pkgMgr userArgs
-    bps <- getPackageState
-    let ps = buildPkgsPending bps
-    case runMode pkgMgr of
-        Left (ListMode _) -> listPkgs ps
-        Right (PortageListMode _) -> listPkgs ps
-        _ -> case getLoopType pkgMgr of
-            UntilNoPending -> loopUntilNoPending bps Seq.empty
-            UntilNoChange -> loopUntilNoChange bps Seq.empty
-            NoLoop -> buildPkgs bps >>= liftIO . exitWith
+    (bps, _) <- get
+    case getLoopType pkgMgr of
+        UntilNoPending -> loopUntilNoPending bps Seq.empty
+        UntilNoChange -> loopUntilNoChange bps Seq.empty
+        NoLoop -> buildPkgs bps >>= liftIO . exitWith
     success "done!"
   where
-    listPkgs :: PendingPackages -> EnvT IO ()
-    listPkgs ps = do
-        mapM_ (liftIO . putStrLn . printPkg) (getPkgs ps)
-        success "done!"
-
-    loopUntilNoPending :: UpdaterLoop (EnvT IO)
+    loopUntilNoPending :: UpdaterLoop m
     loopUntilNoPending bps hist
         -- Stop when there are no more pending packages
         | Set.null (getPkgs ps) = alertDone Nothing
@@ -135,7 +155,7 @@ runUpdater = do
 
         where ps = buildPkgsPending bps
 
-    loopUntilNoChange :: UpdaterLoop (EnvT IO)
+    loopUntilNoChange :: UpdaterLoop m
     loopUntilNoChange bps hist = case viewr hist of
         -- If there is no history, the first update still needs to be run
         EmptyR -> updateAndContinue loopUntilNoChange bps hist
@@ -200,7 +220,7 @@ runUpdater = do
             ]
 
     -- Rebuild the packages then retrieve fresh package state
-    updateAndContinue :: UpdaterLoop (EnvT IO) -> UpdaterLoop (EnvT IO)
+    updateAndContinue :: UpdaterLoop m -> UpdaterLoop m
     updateAndContinue f bps hist = do
         -- Exit with failure if there are no targets for the package manager
         when (emptyTargets (buildPkgsTargets bps)) alertNoTargets
@@ -230,7 +250,6 @@ runUpdater = do
             : maybe [] ("":) maybeMsg
 
     alertNoTargets = liftIO $ die "No targets to pass to the package manager!"
-
 
 -- | As needed, query @ghc-pkg check@ for broken packages, scan the filesystem
 --   for installed packages, and look for misc breakages. Return the results
