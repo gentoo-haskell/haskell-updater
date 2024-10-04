@@ -10,6 +10,7 @@
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main (main) where
@@ -109,8 +110,7 @@ dumpHistory historySeq = do
 --   holds the logic for what action to take after running @emerge@ (e.g. exit
 --   with success/error or continue to the next iteration).
 type UpdaterLoop m
-    =  BuildPkgs
-    -> RunHistory
+    =  m () -- ^ The next iteration of the loop
     -> m ()
 
 -- | State between each run of an 'UpdaterLoop'
@@ -130,82 +130,85 @@ runUpdater
         , MonadIO m
         , MonadState UpdateState m
         , HasPkgManager m
+        , HasRawPMArgs m
         )
     => m ()
 runUpdater = do
     pkgMgr <- askPkgManager
     (bps, _) <- get
     case getLoopType pkgMgr of
-        UntilNoPending -> loopUntilNoPending bps Seq.empty
-        UntilNoChange -> loopUntilNoChange bps Seq.empty
+        UntilNoPending -> runLoop loopUntilNoPending
+        UntilNoChange -> runLoop loopUntilNoChange
         NoLoop -> buildPkgs bps >>= liftIO . exitWith
     success "done!"
   where
     loopUntilNoPending :: UpdaterLoop m
-    loopUntilNoPending bps hist
-        -- Stop when there are no more pending packages
-        | Set.null (getPkgs ps) = alertDone Nothing
+    loopUntilNoPending continue = do
+        (bps, hist) <- get
+        let ps = buildPkgsPending bps
 
-        -- Look to see if the current set of broken haskell packages matches
-        -- any in the history. If it does, this means we're in a loop
-        | getPkgs ps `elem` (fst <$> toList hist) = alertStuck hist Nothing
+            -- Stop when there are no more pending packages
+        if  | Set.null (getPkgs ps) -> alertDone Nothing
 
-        -- Otherwise, keep going
-        | otherwise = updateAndContinue loopUntilNoPending bps hist
+            -- Look to see if the current set of broken haskell packages matches
+            -- any in the history. If it does, this means we're in a loop
+            | getPkgs ps `elem` (fst <$> toList hist) -> alertStuck hist Nothing
 
-        where ps = buildPkgsPending bps
+            -- Otherwise, keep going
+            | otherwise -> continue
 
     loopUntilNoChange :: UpdaterLoop m
-    loopUntilNoChange bps hist = case viewr hist of
-        -- If there is no history, the first update still needs to be run
-        EmptyR -> updateAndContinue loopUntilNoChange bps hist
+    loopUntilNoChange continue = do
+        (bps, hist) <- get
+        let ps = buildPkgsPending bps
 
-        -- There is at least one entry in the history
-        (prevHist :> (lastPkgSet, lastEC)) ->
-            let nothingChanged, cmdSuccess, noTargets :: Bool
+        case viewr hist of
+            -- If there is no history, the first update still needs to be run
+            EmptyR -> continue
 
-                -- Is the broken package set identical to what it was
-                -- before the last update?
-                nothingChanged = getPkgs ps == lastPkgSet
+            -- There is at least one entry in the history
+            (prevHist :> (lastPkgSet, lastEC)) ->
+                let nothingChanged, cmdSuccess, noTargets :: Bool
 
-                -- Did the last update command succeed?
-                cmdSuccess = case lastEC of
-                    ExitSuccess -> True
-                    ExitFailure _ -> False
+                    -- Is the broken package set identical to what it was
+                    -- before the last update?
+                    nothingChanged = getPkgs ps == lastPkgSet
 
-                -- Are there no targets for the package manager?
-                noTargets = emptyTargets (buildPkgsTargets bps)
+                    -- Did the last update command succeed?
+                    cmdSuccess = case lastEC of
+                        ExitSuccess -> True
+                        ExitFailure _ -> False
 
-                -- Alert that we're finished, but add a warning if there are
-                -- still broken packages on the system
-                done = alertDone $ if Set.null (getPkgs ps)
-                    then Nothing
-                    else Just successIncomplete
+                    -- Are there no targets for the package manager?
+                    noTargets = emptyTargets (buildPkgsTargets bps)
 
-                -- Alert that we're stuck, but add a note if it failed on its
-                -- first run
-                stuck = alertStuck hist $ if Seq.null prevHist
-                    then Just stuckOnePass
-                    else Nothing
+                    -- Alert that we're finished, but add a warning if there are
+                    -- still broken packages on the system
+                    done = alertDone $ if Set.null (getPkgs ps)
+                        then Nothing
+                        else Just successIncomplete
 
-            in case (nothingChanged, cmdSuccess) of
-                -- The success state: The last update completed and
-                -- nothing changed
-                (True, True) -> done
+                    -- Alert that we're stuck, but add a note if it failed on its
+                    -- first run
+                    stuck = alertStuck hist $ if Seq.null prevHist
+                        then Just stuckOnePass
+                        else Nothing
 
-                -- Stuck state: The last update failed and nothing changed
-                (True, False) -> stuck
+                in case (nothingChanged, cmdSuccess) of
+                    -- The success state: The last update completed and
+                    -- nothing changed
+                    (True, True) -> done
 
-                (False, _)
-                    -- A change happened, but there are no more targets
-                    | noTargets -> done
+                    -- Stuck state: The last update failed and nothing changed
+                    (True, False) -> stuck
 
-                    -- A change happened and we have targets still: continue
-                    | otherwise -> updateAndContinue loopUntilNoChange bps hist
+                    (False, _)
+                        -- A change happened, but there are no more targets
+                        | noTargets -> done
 
+                        -- A change happened and we have targets still: continue
+                        | otherwise -> continue
       where
-        ps = buildPkgsPending bps
-
         -- This mostly comes up with the 'UntilNoChange' loop type, so we'll limit
         -- it to that for now.
         stuckOnePass =
@@ -220,8 +223,10 @@ runUpdater = do
             ]
 
     -- Rebuild the packages then retrieve fresh package state
-    updateAndContinue :: UpdaterLoop m -> UpdaterLoop m
-    updateAndContinue f bps hist = do
+    updateAndContinue :: UpdaterLoop m -> m ()
+    updateAndContinue loop = do
+        (bps, hist) <- get
+
         -- Exit with failure if there are no targets for the package manager
         when (emptyTargets (buildPkgsTargets bps)) alertNoTargets
 
@@ -231,7 +236,12 @@ runUpdater = do
         let ps = buildPkgsPending bps'
             hist' = hist |> (getPkgs ps, exitCode)
 
-        f bps' hist'
+        put (bps', hist')
+
+        runLoop loop
+
+    runLoop :: UpdaterLoop m -> m ()
+    runLoop loop = loop (updateAndContinue loop)
 
     emptyTargets :: Set.Set Types.Target -> Bool
     emptyTargets = all $ \case
