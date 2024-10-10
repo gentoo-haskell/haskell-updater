@@ -10,6 +10,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Distribution.Gentoo.PkgManager
        ( definedPMs
@@ -168,12 +169,13 @@ buildPkgsPending = \case
 -- | Write to the global package state. This is generally used with its
 --   'IO' instance (using 'buildCmd'/'buildRACmd' to modify the global state),
 --   but it is left open as a class for testing purposes.
-class Monad m => MonadWritePkgState m where
+class MonadExit m => MonadWritePkgState m where
     buildPkgs
         :: BuildPkgs
-        -> m ExitCode
+        -> m (ExitArg m)
 
-instance MonadIO m => MonadWritePkgState (EnvT m) where
+instance (ExitArg m ~ ExitCode, MonadExit m, MonadIO m)
+    => MonadWritePkgState (EnvT m) where
     buildPkgs bp = do
         rm <- askRunModifier
         rawArgs <- Mode.getExtraRawArgs <$> askPkgManager

@@ -6,6 +6,11 @@
 
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Distribution.Gentoo.Types
   ( RunModifier(..)
@@ -20,11 +25,16 @@ module Distribution.Gentoo.Types
   , InvalidPkgs(..)
   , AllPkgs(..)
   , PackageSet(..)
+  , MonadExit(..)
   ) where
 
+import Control.Monad.State.Strict
+import Data.Proxy
 import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
-import System.Exit (ExitCode(..))
+import System.Exit (ExitCode(..), exitSuccess)
+import qualified System.Exit as Exit
+import System.IO (hPutStrLn, stderr)
 
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager.Types
@@ -64,7 +74,7 @@ data Target
     | CustomTarget String
     deriving (Show, Eq, Ord)
 
-type RunHistory = Seq.Seq (Set.Set Package, ExitCode)
+type RunHistory m = Seq.Seq (Set.Set Package, ExitArg m)
 
 data LoopType
       -- | Loop until there are no pending packages left. Carries a
@@ -119,3 +129,38 @@ instance PackageSet () where
 instance PackageSet PendingPackages where
     getPkgs (InvalidPending p) = getPkgs p
     getPkgs (AllPending p) = getPkgs p
+
+-- | A class for monads that have some sort of exit feature. It must terminate
+--   execution within the monad, optionally display a message, and return an
+--   'ExitArg'. The most obvious example is @IO@ which has 'exitSuccess' and
+--   more broadly, 'Exit.exitWith'. The 'ExitArg' for @IO@ is 'ExitCode'.
+--
+--   This is left open as a class for testing purposes.
+class Monad m => MonadExit m where
+    type ExitArg m
+    success :: String -> m a
+    die :: String -> m a
+    exitWith :: ExitArg m -> m a
+    isSuccess :: Proxy m -> ExitArg m -> Bool
+
+instance MonadExit IO where
+    type ExitArg IO = ExitCode
+    success msg = do
+        hPutStrLn stderr msg
+        liftIO exitSuccess
+    die msg = do
+        hPutStrLn stderr ("ERROR: " ++ msg)
+        exitWith (ExitFailure 1)
+    exitWith = Exit.exitWith
+    isSuccess _ = \case
+        ExitSuccess -> True
+        ExitFailure _ -> False
+
+instance MonadExit m => MonadExit (StateT r m) where
+    type ExitArg (StateT r m) = ExitArg m
+    success = lift . success
+    die = lift . die
+    exitWith = lift . exitWith
+    isSuccess (_ :: Proxy (StateT r m)) = isSuccess (Proxy :: Proxy m)
+
+deriving instance MonadExit SayIO

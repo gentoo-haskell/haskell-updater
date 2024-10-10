@@ -23,6 +23,7 @@ module Distribution.Gentoo.Env
 
 import Control.Monad.Reader
 import Control.Monad.State.Strict
+import Data.Proxy
 import System.IO (hPutStrLn, stderr)
 
 import Distribution.Gentoo.Types
@@ -40,6 +41,13 @@ newtype EnvT m a = EnvT
 instance MonadIO m => MonadSay (EnvT m) where
     outputLn = liftIO . hPutStrLn stderr
     askVerbosity = asks $ \(rm, _, _) -> verbosity rm
+
+instance MonadExit m => MonadExit (EnvT m) where
+    type ExitArg (EnvT m) = ExitArg m
+    success = lift . success
+    die = lift . die
+    exitWith = lift . exitWith
+    isSuccess (_ :: Proxy (EnvT m)) = isSuccess (Proxy :: Proxy m)
 
 class Monad m => HasRunModifier m where
     askRunModifier :: m RunModifier

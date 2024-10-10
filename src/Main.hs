@@ -35,6 +35,7 @@ import           Control.Monad.State.Strict
 import           Data.Bifoldable       (bifoldMap)
 import           Data.Foldable         (toList)
 import qualified Data.List             as L
+import           Data.Proxy
 import           Data.Sequence         (ViewR(..), viewr, (|>))
 import qualified Data.Sequence         as Seq
 import qualified Data.Set              as Set
@@ -42,8 +43,6 @@ import           Data.Version          (showVersion)
 import qualified Paths_haskell_updater as Paths (version)
 import           System.Console.GetOpt
 import           System.Environment    (getArgs, getProgName)
-import           System.Exit           (ExitCode (..), exitSuccess, exitWith)
-import           System.IO             (hPutStrLn, stderr)
 
 import Output
 
@@ -90,7 +89,8 @@ runAction cmdArgs rawArgs = do
         mapM_ (liftIO . putStrLn . printPkg) (getPkgs ps)
         success "done!"
 
-dumpHistory :: MonadSay m => RunHistory -> m ()
+dumpHistory :: forall m. (MonadSay m, Show (ExitArg m))
+    => RunHistory m -> m ()
 dumpHistory historySeq = do
     say "Updater's past history:"
     CM.forM_ historyList $ \(n, entry, ec) -> say $ unwords
@@ -100,7 +100,7 @@ dumpHistory historySeq = do
         , show ec
         ]
     say ""
-  where historyList :: [(Int, Set.Set Package, ExitCode)]
+  where historyList :: [(Int, Set.Set Package, ExitArg m)]
         historyList =
             [ (n, entry, ec)
             | ((entry, ec), n) <- zip (toList historySeq) [1..]
@@ -114,9 +114,9 @@ type UpdaterLoop m
     -> m ()
 
 -- | State between each run of an 'UpdaterLoop'
-type UpdateState =
+type UpdateState m =
     ( BuildPkgs -- ^ Current targets and other info needed to run the PM
-    , RunHistory
+    , RunHistory m
     )
 
 -- | Run the main part of @haskell-updater@ (e.g. not @--help@,
@@ -127,8 +127,9 @@ runUpdater
         ( MonadSay m
         , MonadPkgState m
         , MonadWritePkgState m
-        , MonadIO m
-        , MonadState UpdateState m
+        , MonadState (UpdateState m) m
+        , MonadExit m
+        , Show (ExitArg m)
         , HasPkgManager m
         , HasRawPMArgs m
         )
@@ -139,7 +140,7 @@ runUpdater = do
     case getLoopType pkgMgr of
         UntilNoPending -> runLoop loopUntilNoPending
         UntilNoChange -> runLoop loopUntilNoChange
-        NoLoop -> buildPkgs bps >>= liftIO . exitWith
+        NoLoop -> buildPkgs bps >>= exitWith
     success "done!"
   where
     loopUntilNoPending :: UpdaterLoop m
@@ -175,9 +176,7 @@ runUpdater = do
                     nothingChanged = getPkgs ps == lastPkgSet
 
                     -- Did the last update command succeed?
-                    cmdSuccess = case lastEC of
-                        ExitSuccess -> True
-                        ExitFailure _ -> False
+                    cmdSuccess = isSuccess (Proxy :: Proxy m) lastEC
 
                     -- Are there no targets for the package manager?
                     noTargets = emptyTargets (buildPkgsTargets bps)
@@ -255,11 +254,11 @@ runUpdater = do
 
     alertStuck hist maybeMsg = do
         dumpHistory hist
-        liftIO $ die $ unlines
+        die $ unlines
             $ "Updater stuck in the loop and can't progress"
             : maybe [] ("":) maybeMsg
 
-    alertNoTargets = liftIO $ die "No targets to pass to the package manager!"
+    alertNoTargets = die "No targets to pass to the package manager!"
 
 -- | As needed, query @ghc-pkg check@ for broken packages, scan the filesystem
 --   for installed packages, and look for misc breakages. Return the results
@@ -445,17 +444,3 @@ systemInfo pkgMgr rawArgs = do
             (CmdLine.ListMode, argString CmdLine.OnlyInvalid)
         ListMode AllInstalled ->
             (CmdLine.ListMode, argString CmdLine.AllInstalled)
-
--- -----------------------------------------------------------------------------
--- Utility functions
-
-success :: (MonadSay m, MonadIO m) => String -> m a
-success msg = do say msg
-                 liftIO exitSuccess
-
-die     :: String -> IO a
-die msg = do putErrLn ("ERROR: " ++ msg)
-             exitWith (ExitFailure 1)
-
-putErrLn :: String -> IO ()
-putErrLn = hPutStrLn stderr
