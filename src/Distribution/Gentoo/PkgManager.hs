@@ -33,6 +33,7 @@ import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
 import qualified Distribution.Gentoo.Types.HUMode as Mode
 
+import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.Char(toLower)
 import Data.Maybe(mapMaybe, fromMaybe)
@@ -191,6 +192,9 @@ instance (ExitArg m ~ ExitCode, MonadExit m, MonadIO m)
         liftIO $ runCmd (withCmd rm) cmd args
 
 instance MonadWritePkgState m => MonadWritePkgState (StateT s m) where
+    buildPkgs = lift . buildPkgs
+
+instance MonadWritePkgState m => MonadWritePkgState (ReaderT r m) where
     buildPkgs = lift . buildPkgs
 
 runCmd :: WithCmd -> String -> [String] -> IO ExitCode

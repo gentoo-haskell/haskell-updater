@@ -28,6 +28,7 @@ module Distribution.Gentoo.Types
   , MonadExit(..)
   ) where
 
+import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.Proxy
 import qualified Data.Set as Set
@@ -162,5 +163,12 @@ instance MonadExit m => MonadExit (StateT r m) where
     die = lift . die
     exitWith = lift . exitWith
     isSuccess (_ :: Proxy (StateT r m)) = isSuccess (Proxy :: Proxy m)
+
+instance MonadExit m => MonadExit (ReaderT r m) where
+    type ExitArg (ReaderT r m) = ExitArg m
+    success = lift . success
+    die = lift . die
+    exitWith = lift . exitWith
+    isSuccess (_ :: Proxy (ReaderT r m)) = isSuccess (Proxy :: Proxy m)
 
 deriving instance MonadExit SayIO

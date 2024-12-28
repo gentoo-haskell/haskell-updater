@@ -64,6 +64,9 @@ instance Monad m => HasPkgManager (EnvT m) where
 instance HasPkgManager m => HasPkgManager (StateT s m) where
     askPkgManager = lift askPkgManager
 
+instance HasPkgManager m => HasPkgManager (ReaderT r m) where
+    askPkgManager = lift askPkgManager
+
 askLoopType :: HasPkgManager m => m LoopType
 askLoopType = getLoopType <$> askPkgManager
 
@@ -77,4 +80,7 @@ instance Monad m => HasRawPMArgs (EnvT m) where
     askRawPMArgs = asks $ \(_, _, rawArgs) -> rawArgs
 
 instance HasRawPMArgs m => HasRawPMArgs (StateT s m) where
+    askRawPMArgs = lift askRawPMArgs
+
+instance HasRawPMArgs m => HasRawPMArgs (ReaderT r m) where
     askRawPMArgs = lift askRawPMArgs

@@ -33,6 +33,7 @@ import Distribution.Text(display)
 import Distribution.Types.LibraryName (LibraryName(..))
 
 -- Other imports
+import Control.Monad.Reader (ReaderT)
 import Control.Monad.State.Strict (StateT, lift)
 import Data.Char(isDigit)
 import Data.Either(partitionEithers)
@@ -258,6 +259,11 @@ instance MonadIO m => MonadPkgState (EnvT m) where
                                 $ hasDirMatching (==libDir')
 
 instance MonadPkgState m => MonadPkgState (StateT s m) where
+    oldGhcPkgs = lift oldGhcPkgs
+    brokenPkgs = lift brokenPkgs
+    allInstalledPkgs = lift allInstalledPkgs
+
+instance MonadPkgState m => MonadPkgState (ReaderT r m) where
     oldGhcPkgs = lift oldGhcPkgs
     brokenPkgs = lift brokenPkgs
     allInstalledPkgs = lift allInstalledPkgs

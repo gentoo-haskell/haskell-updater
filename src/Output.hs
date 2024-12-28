@@ -20,6 +20,7 @@ module Output (
               , Verbosity(..)
               ) where
 
+import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.Set as Set
 import System.IO (hPutStrLn, stderr)
@@ -88,5 +89,9 @@ instance MonadSay SayIO where
     askVerbosity = pure Normal
 
 instance MonadSay m => MonadSay (StateT s m) where
+    outputLn = lift . outputLn
+    askVerbosity = lift askVerbosity
+
+instance MonadSay m => MonadSay (ReaderT r m) where
     outputLn = lift . outputLn
     askVerbosity = lift askVerbosity
