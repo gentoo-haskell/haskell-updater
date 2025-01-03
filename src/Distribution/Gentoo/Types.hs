@@ -4,6 +4,7 @@
    General types needed for haskell-updater functionality
  -}
 
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
@@ -19,7 +20,8 @@ module Distribution.Gentoo.Types
   , WithUserCmd
   , PendingPackages(..)
   , Target(..)
-  , RunHistory
+  , RunHistory(..)
+  , isInHistory
   , LoopType(..)
   , ExtraRawArgs(..)
   , InvalidPkgs(..)
@@ -75,14 +77,25 @@ data Target
     | CustomTarget String
     deriving (Show, Eq, Ord)
 
-type RunHistory m = Seq.Seq (Set.Set Package, ExitArg m)
+data RunHistory m = RunHistory
+    { initialState :: Set.Set Package
+    , runHistory :: Seq.Seq (Set.Set Package, ExitArg m)
+    }
+
+deriving instance Show (ExitArg m) => Show (RunHistory m)
+deriving instance Eq (ExitArg m) => Eq (RunHistory m)
+deriving instance Ord (ExitArg m) => Ord (RunHistory m)
+
+isInHistory :: PackageSet s => RunHistory m -> s -> Bool
+isInHistory (RunHistory pkgSet0 runSeq) ps
+    = pkgSet0 == pkgSet || pkgSet `elem` (fst <$> runSeq)
+    where pkgSet = getPkgs ps
 
 data LoopType
-      -- | Loop until there are no pending packages left. Carries a
-      --   'Set' of pending packages that were present during previous runs.
-      --   Fails if the current 'PendingPackages' matches any in this set,
-      --   as this means one or more packages are failing due to reasons other
-      --   than broken dependencies.
+      -- | Loop until there are no pending packages left. Fails if the current
+      --   'PendingPackages' matches any in the history, as this means one or
+      --   more packages are failing due to reasons other than broken
+      --   dependencies.
       --
       --   This is the default "classic" behavior of @haskell-updater@
     = UntilNoPending
@@ -130,6 +143,9 @@ instance PackageSet () where
 instance PackageSet PendingPackages where
     getPkgs (InvalidPending p) = getPkgs p
     getPkgs (AllPending p) = getPkgs p
+
+instance PackageSet (Set.Set Package) where
+    getPkgs = id
 
 -- | A class for monads that have some sort of exit feature. It must terminate
 --   execution within the monad, optionally display a message, and return an

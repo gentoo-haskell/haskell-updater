@@ -9,9 +9,12 @@
 -}
 
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Main (main) where
 
@@ -81,9 +84,8 @@ runAction cmdArgs rawArgs = do
             case runMode pm of
                  Left (ListMode _) -> listPkgs ps
                  Right (PortageListMode _) -> listPkgs ps
-                 _ -> evalStateT
-                    runUpdater
-                    (bps, Seq.empty)
+                 _ -> runIOEnv runUpdater
+                            (bps, RunHistory (getPkgs ps) Seq.empty)
   where
     listPkgs ps = do
         mapM_ (liftIO . putStrLn . printPkg) (getPkgs ps)
@@ -91,8 +93,12 @@ runAction cmdArgs rawArgs = do
 
 dumpHistory :: forall m. (MonadSay m, Show (ExitArg m))
     => RunHistory m -> m ()
-dumpHistory historySeq = do
+dumpHistory (RunHistory pkgSet0 historySeq) = do
     say "Updater's past history:"
+    say $ unwords
+        [ "Initial state:"
+        , show $ printPkg <$> Set.toList pkgSet0
+        ]
     CM.forM_ historyList $ \(n, entry, ec) -> say $ unwords
         [ "Pass"
         , show n ++ ":"
@@ -119,6 +125,24 @@ type UpdateState m =
     , RunHistory m
     )
 
+-- | The default run environment with 'IO' at its base.
+newtype IOEnv a
+    = IOEnv (StateT (UpdateState IOEnv) (EnvT IO) a)
+    deriving ( Functor, Applicative, Monad, MonadSay, MonadPkgState
+             , MonadWritePkgState, MonadState (UpdateState IOEnv)
+             , HasPkgManager, HasRawPMArgs )
+
+instance MonadExit IOEnv where
+    type ExitArg IOEnv = ExitArg (StateT (UpdateState IOEnv) (EnvT IO))
+    success = IOEnv . success
+    die = IOEnv . die
+    exitWith = IOEnv . exitWith
+    isSuccess (_ :: Proxy IOEnv)
+        = isSuccess (Proxy :: Proxy (StateT (UpdateState IOEnv) (EnvT IO)))
+
+runIOEnv :: IOEnv a -> UpdateState IOEnv -> EnvT IO a
+runIOEnv (IOEnv s) = evalStateT s
+
 -- | Run the main part of @haskell-updater@ (e.g. not @--help@,
 --   @--version@, or list mode). This expects the initial 'UpdateState' to
 --   reflect the initial state of the system.
@@ -143,6 +167,9 @@ runUpdater = do
         NoLoop -> buildPkgs bps >>= exitWith
     success "done!"
   where
+    -- | Only abort the loop when there are no broken packages reported
+    --   on the system, or if a loop is detected by comparing the state to
+    --   previous runs.
     loopUntilNoPending :: UpdaterLoop m
     loopUntilNoPending continue = do
         (bps, hist) <- get
@@ -153,52 +180,63 @@ runUpdater = do
 
             -- Look to see if the current set of broken haskell packages matches
             -- any in the history. If it does, this means we're in a loop
-            | getPkgs ps `elem` (fst <$> toList hist) -> alertStuck hist Nothing
+            | isInHistory hist (getPkgs ps) -> alertStuck hist Nothing
 
             -- Otherwise, keep going
             | otherwise -> continue
 
+    -- | Compare the /last two/ runs to see if any broken packages were fixed.
+    --   If the state of broken packages stays the same between runs, it means
+    --   emerge is either hitting an error that @haskell-updater@ cannot fix,
+    --   or emerge has nothing to do.
     loopUntilNoChange :: UpdaterLoop m
     loopUntilNoChange continue = do
         (bps, hist) <- get
-        let ps = buildPkgsPending bps
 
-        case viewr hist of
+        case viewr (runHistory hist) of
             -- If there is no history, the first update still needs to be run
             EmptyR -> continue
 
             -- There is at least one entry in the history
-            (prevHist :> (lastPkgSet, lastEC)) ->
-                let nothingChanged, cmdSuccess, noTargets :: Bool
+            (prevHist :> (thisPkgSet, thisEC)) -> do
+
+                let -- Determine if this was the first run and how to get the
+                    -- prior package set.
+                    (isFirstRun, lastPkgSet) = case viewr prevHist of
+                        -- No previous history; this was the first run
+                        EmptyR -> (True, initialState hist)
+                        -- Previous history exists
+                        (_ :> (prevPkgSet, _)) -> (False, prevPkgSet)
+
+                    nothingChanged, cmdSuccess, noTargets :: Bool
 
                     -- Is the broken package set identical to what it was
-                    -- before the last update?
-                    nothingChanged = getPkgs ps == lastPkgSet
+                    -- before the update?
+                    nothingChanged = thisPkgSet == lastPkgSet
 
-                    -- Did the last update command succeed?
-                    cmdSuccess = isSuccess (Proxy :: Proxy m) lastEC
+                    -- Did the update command succeed?
+                    cmdSuccess = isSuccess (Proxy :: Proxy m) thisEC
 
                     -- Are there no targets for the package manager?
                     noTargets = emptyTargets (buildPkgsTargets bps)
 
                     -- Alert that we're finished, but add a warning if there are
                     -- still broken packages on the system
-                    done = alertDone $ if Set.null (getPkgs ps)
+                    done = alertDone $ if Set.null thisPkgSet
                         then Nothing
                         else Just successIncomplete
 
                     -- Alert that we're stuck, but add a note if it failed on its
                     -- first run
-                    stuck = alertStuck hist $ if Seq.null prevHist
+                    stuck = alertStuck hist $ if isFirstRun
                         then Just stuckOnePass
                         else Nothing
 
-                in case (nothingChanged, cmdSuccess) of
-                    -- The success state: The last update completed and
-                    -- nothing changed
+                case (nothingChanged, cmdSuccess) of
+                    -- The success state: The update completed and nothing changed
                     (True, True) -> done
 
-                    -- Stuck state: The last update failed and nothing changed
+                    -- Stuck state: The update failed and nothing changed
                     (True, False) -> stuck
 
                     (False, _)
@@ -233,7 +271,8 @@ runUpdater = do
 
         bps' <- getPackageState
         let ps = buildPkgsPending bps'
-            hist' = hist |> (getPkgs ps, exitCode)
+            hist' = hist
+                { runHistory = runHistory hist |> (getPkgs ps, exitCode) }
 
         put (bps', hist')
 
