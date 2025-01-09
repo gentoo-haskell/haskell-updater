@@ -31,6 +31,7 @@ import Data.Monoid (Last(..))
 
 import Distribution.Gentoo.Types hiding (Target)
 import Distribution.Gentoo.Util (These(..), NESet(..))
+import Distribution.Gentoo.PkgManager.Types (PMFlag(..))
 
 data HUMode
     = HelpMode
@@ -115,9 +116,12 @@ getTarget (ListMode t) = t
 --   how the looping mechanism of @haskell-updater@ should funciton.
 --
 --   Takes a 'PkgManager' as 'RunMode' is the only mode where looping makes
---   sense.
-getLoopType :: PkgManager -> LoopType
-getLoopType = \case
+--   sense. Returns 'NoLoop' if the @--pretend@ flag was passed.
+getLoopType :: RunModifier -> PkgManager -> LoopType
+getLoopType rm
+      -- Always use NoLoop if --pretend is passed on the command line
+    | any (== PretendBuild) (flags rm) = const NoLoop
+    | otherwise = \case
     -- @--mode=reinstall-atoms@ should not loop if /only/ @--target=all@ is set
     Portage (ReinstallAtomsMode (This AllInstalled)) -> NoLoop
 

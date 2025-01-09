@@ -73,7 +73,7 @@ runAction cmdArgs rawArgs = do
             vsay $ show (RunMode rm pm)
             vsay ""
             vsay "Looping strategy:"
-            vsay $ show (getLoopType pm)
+            vsay $ show (getLoopType rm pm)
             vsay ""
 
             systemInfo pm rawArgs
@@ -130,7 +130,7 @@ newtype IOEnv a
     = IOEnv (StateT (UpdateState IOEnv) (EnvT IO) a)
     deriving ( Functor, Applicative, Monad, MonadSay, MonadPkgState
              , MonadWritePkgState, MonadState (UpdateState IOEnv)
-             , HasPkgManager, HasRawPMArgs )
+             , HasRunModifier, HasPkgManager, HasRawPMArgs )
 
 instance MonadExit IOEnv where
     type ExitArg IOEnv = ExitArg (StateT (UpdateState IOEnv) (EnvT IO))
@@ -154,14 +154,14 @@ runUpdater
         , MonadState (UpdateState m) m
         , MonadExit m
         , Show (ExitArg m)
+        , HasRunModifier m
         , HasPkgManager m
         , HasRawPMArgs m
         )
     => m ()
 runUpdater = do
-    pkgMgr <- askPkgManager
     (bps, _) <- get
-    case getLoopType pkgMgr of
+    askLoopType >>= \case
         UntilNoPending -> runLoop loopUntilNoPending
         UntilNoChange -> runLoop loopUntilNoChange
         NoLoop -> buildPkgs bps >>= exitWith

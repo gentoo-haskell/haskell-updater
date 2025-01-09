@@ -55,6 +55,12 @@ class Monad m => HasRunModifier m where
 instance Monad m => HasRunModifier (EnvT m) where
     askRunModifier = asks $ \(rm, _, _) -> rm
 
+instance HasRunModifier m => HasRunModifier (StateT s m) where
+    askRunModifier = lift askRunModifier
+
+instance HasRunModifier m => HasRunModifier (ReaderT r m) where
+    askRunModifier = lift askRunModifier
+
 class Monad m => HasPkgManager m where
     askPkgManager :: m PkgManager
 
@@ -67,8 +73,8 @@ instance HasPkgManager m => HasPkgManager (StateT s m) where
 instance HasPkgManager m => HasPkgManager (ReaderT r m) where
     askPkgManager = lift askPkgManager
 
-askLoopType :: HasPkgManager m => m LoopType
-askLoopType = getLoopType <$> askPkgManager
+askLoopType :: (HasRunModifier m, HasPkgManager m) => m LoopType
+askLoopType = getLoopType <$> askRunModifier <*> askPkgManager
 
 askExtraRawArgs :: HasPkgManager m => m ExtraRawArgs
 askExtraRawArgs = getExtraRawArgs <$> askPkgManager
