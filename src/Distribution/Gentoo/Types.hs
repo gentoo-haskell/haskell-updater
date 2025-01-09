@@ -22,6 +22,10 @@ module Distribution.Gentoo.Types
   , Target(..)
   , RunHistory(..)
   , isInHistory
+  , HistoryState(..)
+  , historyState
+  , isEmptyHistory
+  , latestPending
   , LoopType(..)
   , ExtraRawArgs(..)
   , InvalidPkgs(..)
@@ -35,6 +39,7 @@ import Control.Monad.State.Strict
 import Data.Proxy
 import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
+import Data.Sequence (ViewR(EmptyR, (:>)), viewr)
 import System.Exit (ExitCode(..), exitSuccess)
 import qualified System.Exit as Exit
 import System.IO (hPutStrLn, stderr)
@@ -77,19 +82,57 @@ data Target
     | CustomTarget String
     deriving (Show, Eq, Ord)
 
+-- | The history of every rebuild run that has been attempted, including the
+--   state of pending packages /before/ any runs have been attempted.
 data RunHistory m = RunHistory
-    { initialState :: Set.Set Package
-    , runHistory :: Seq.Seq (Set.Set Package, ExitArg m)
+    { initialState :: PendingPackages
+    , runHistory :: Seq.Seq (PendingPackages, ExitArg m)
     }
 
 deriving instance Show (ExitArg m) => Show (RunHistory m)
 deriving instance Eq (ExitArg m) => Eq (RunHistory m)
 deriving instance Ord (ExitArg m) => Ord (RunHistory m)
 
+-- | Is the package set in the history somewhere?
 isInHistory :: PackageSet s => RunHistory m -> s -> Bool
-isInHistory (RunHistory pkgSet0 runSeq) ps
-    = pkgSet0 == pkgSet || pkgSet `elem` (fst <$> runSeq)
+isInHistory (RunHistory pending0 runSeq) ps
+    = getPkgs pending0 == pkgSet || pkgSet `elem` (getPkgs . fst <$> runSeq)
     where pkgSet = getPkgs ps
+
+-- | The current state of the history, processed in a way that is useful
+--   for looping algorithms.
+data HistoryState m
+      -- | Carries the initial pending packages state
+    = NoRunsTried PendingPackages
+      -- | Carries the initial pending packages state and the first history
+      --   entry
+    | OneRunTried PendingPackages (PendingPackages, ExitArg m)
+      -- | Carries the last two history entries (oldest first)
+    | MultipleRunsTried (PendingPackages, ExitArg m) (PendingPackages, ExitArg m)
+
+deriving instance Show (ExitArg m) => Show (HistoryState m)
+deriving instance Eq (ExitArg m) => Eq (HistoryState m)
+deriving instance Ord (ExitArg m) => Ord (HistoryState m)
+
+-- | Returns 'Nothing' if the first update run hasn't been carried out
+historyState :: RunHistory m -> HistoryState m
+historyState (RunHistory initialPending runSeq) = case viewr runSeq of
+    EmptyR -> NoRunsTried initialPending
+    (hs :> lastH) -> case viewr hs of
+        EmptyR -> OneRunTried initialPending lastH
+        (_ :> earlierH) -> MultipleRunsTried earlierH lastH
+
+-- | Returns 'True' if the first update run hasn't been carried out
+isEmptyHistory :: RunHistory m -> Bool
+isEmptyHistory h = case historyState h of
+    NoRunsTried _ -> True
+    _ -> False
+
+latestPending :: RunHistory m -> PendingPackages
+latestPending h = case historyState h of
+    NoRunsTried initialPending -> initialPending
+    OneRunTried _ (lastPending, _) -> lastPending
+    MultipleRunsTried _ (lastPending, _) -> lastPending
 
 data LoopType
       -- | Loop until there are no pending packages left. Fails if the current

@@ -39,7 +39,7 @@ import           Data.Bifoldable       (bifoldMap)
 import           Data.Foldable         (toList)
 import qualified Data.List             as L
 import           Data.Proxy
-import           Data.Sequence         (ViewR(..), viewr, (|>))
+import           Data.Sequence         ((|>))
 import qualified Data.Sequence         as Seq
 import qualified Data.Set              as Set
 import           Data.Version          (showVersion)
@@ -85,7 +85,7 @@ runAction cmdArgs rawArgs = do
                  Left (ListMode _) -> listPkgs ps
                  Right (PortageListMode _) -> listPkgs ps
                  _ -> runIOEnv runUpdater
-                            (bps, RunHistory (getPkgs ps) Seq.empty)
+                            (bps, RunHistory ps Seq.empty)
   where
     listPkgs ps = do
         mapM_ (liftIO . putStrLn . printPkg) (getPkgs ps)
@@ -97,16 +97,16 @@ dumpHistory (RunHistory pkgSet0 historySeq) = do
     say "Updater's past history:"
     say $ unwords
         [ "Initial state:"
-        , show $ printPkg <$> Set.toList pkgSet0
+        , show $ printPkg <$> Set.toList (getPkgs pkgSet0)
         ]
     CM.forM_ historyList $ \(n, entry, ec) -> say $ unwords
         [ "Pass"
         , show n ++ ":"
-        , show $ printPkg <$> Set.toList entry
+        , show $ printPkg <$> Set.toList (getPkgs entry)
         , show ec
         ]
     say ""
-  where historyList :: [(Int, Set.Set Package, ExitArg m)]
+  where historyList :: [(Int, PendingPackages, ExitArg m)]
         historyList =
             [ (n, entry, ec)
             | ((entry, ec), n) <- zip (toList historySeq) [1..]
@@ -173,14 +173,17 @@ runUpdater = do
     loopUntilNoPending :: UpdaterLoop m
     loopUntilNoPending continue = do
         (bps, hist) <- get
+
         let ps = buildPkgsPending bps
 
             -- Stop when there are no more pending packages
         if  | Set.null (getPkgs ps) -> alertDone Nothing
 
             -- Look to see if the current set of broken haskell packages matches
-            -- any in the history. If it does, this means we're in a loop
-            | isInHistory hist (getPkgs ps) -> alertStuck hist Nothing
+            -- any in the history. If it does, this means we're in a loop.
+            -- (Ignore this if the first run has not been completed yet.)
+            | not (isEmptyHistory hist) && isInHistory hist (getPkgs ps)
+                -> alertStuck Nothing
 
             -- Otherwise, keep going
             | otherwise -> continue
@@ -193,59 +196,58 @@ runUpdater = do
     loopUntilNoChange continue = do
         (bps, hist) <- get
 
-        case viewr (runHistory hist) of
-            -- If there is no history, the first update still needs to be run
-            EmptyR -> continue
+        if noTargets bps
+            then done
+            else case historyState hist of
+                -- If there is no history, the first update still needs to be run
+                NoRunsTried _ -> continue
 
-            -- There is at least one entry in the history
-            (prevHist :> (thisPkgSet, thisEC)) -> do
+                OneRunTried initialPending (lastPending, lastEC)
+                    -> go initialPending lastPending lastEC True
 
-                let -- Determine if this was the first run and how to get the
-                    -- prior package set.
-                    (isFirstRun, lastPkgSet) = case viewr prevHist of
-                        -- No previous history; this was the first run
-                        EmptyR -> (True, initialState hist)
-                        -- Previous history exists
-                        (_ :> (prevPkgSet, _)) -> (False, prevPkgSet)
+                MultipleRunsTried (earlierPending, _) (lastPending, lastEC)
+                    -> go earlierPending lastPending lastEC False
 
-                    nothingChanged, cmdSuccess, noTargets :: Bool
-
-                    -- Is the broken package set identical to what it was
-                    -- before the update?
-                    nothingChanged = thisPkgSet == lastPkgSet
-
-                    -- Did the update command succeed?
-                    cmdSuccess = isSuccess (Proxy :: Proxy m) thisEC
-
-                    -- Are there no targets for the package manager?
-                    noTargets = emptyTargets (buildPkgsTargets bps)
-
-                    -- Alert that we're finished, but add a warning if there are
-                    -- still broken packages on the system
-                    done = alertDone $ if Set.null thisPkgSet
-                        then Nothing
-                        else Just successIncomplete
-
-                    -- Alert that we're stuck, but add a note if it failed on its
-                    -- first run
-                    stuck = alertStuck hist $ if isFirstRun
-                        then Just stuckOnePass
-                        else Nothing
-
-                case (nothingChanged, cmdSuccess) of
-                    -- The success state: The update completed and nothing changed
-                    (True, True) -> done
-
-                    -- Stuck state: The update failed and nothing changed
-                    (True, False) -> stuck
-
-                    (False, _)
-                        -- A change happened, but there are no more targets
-                        | noTargets -> done
-
-                        -- A change happened and we have targets still: continue
-                        | otherwise -> continue
       where
+        go :: PendingPackages -> PendingPackages -> ExitArg m -> Bool -> m ()
+        go earlierPending lastPending lastEC isFirstRun = do
+            let nothingChanged, cmdSuccess :: Bool
+
+                -- Is the broken package set identical to what it was
+                -- before the update?
+                nothingChanged = lastPending == earlierPending
+
+                -- Did the update command succeed?
+                cmdSuccess = isSuccess (Proxy :: Proxy m) lastEC
+
+                -- Alert that we're stuck, but add a note if it failed on its
+                -- first run
+                stuck = alertStuck $ if isFirstRun
+                    then Just stuckOnePass
+                    else Nothing
+
+            case (nothingChanged, cmdSuccess) of
+                -- The success state: The update completed and nothing changed
+                (True, True) -> done
+
+                -- Stuck state: The update failed and nothing changed
+                (True, False) -> stuck
+
+                -- A change happened and we have targets still: continue
+                (False, _) -> continue
+
+        -- Alert that we're finished, but add a warning if there are
+        -- still broken packages on the system
+        done = do
+            (_, hist) <- get
+            let lastPending = latestPending hist
+            alertDone $ if Set.null (getPkgs lastPending)
+                then Nothing
+                else Just successIncomplete
+
+        -- Are there no targets for the package manager?
+        noTargets = emptyTargets . buildPkgsTargets
+
         -- This mostly comes up with the 'UntilNoChange' loop type, so we'll limit
         -- it to that for now.
         stuckOnePass =
@@ -272,7 +274,7 @@ runUpdater = do
         bps' <- getPackageState
         let ps = buildPkgsPending bps'
             hist' = hist
-                { runHistory = runHistory hist |> (getPkgs ps, exitCode) }
+                { runHistory = runHistory hist |> (ps, exitCode) }
 
         put (bps', hist')
 
@@ -291,7 +293,8 @@ runUpdater = do
         $ "Nothing to build!"
         : maybe [] ("":) maybeMsg
 
-    alertStuck hist maybeMsg = do
+    alertStuck maybeMsg = do
+        (_,hist) <- get
         dumpHistory hist
         die $ unlines
             $ "Updater stuck in the loop and can't progress"
