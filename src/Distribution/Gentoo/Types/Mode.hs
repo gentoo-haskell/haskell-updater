@@ -21,7 +21,7 @@ module Distribution.Gentoo.Types.Mode
     , PortageMode(..)
     , PortageBasicTarget(..)
     , ReinstallAtomsTarget(..)
-    , RATargets
+    , RATargets(..)
     , getLoopType
     , getExtraRawArgs
     ) where
@@ -59,7 +59,10 @@ data Target
 type CustomTarget = String
 
 -- | Encodes valid target combinations for 'ReinstallAtomsMode'
-type RATargets = These Target (These ReinstallAtomsTarget (NESet CustomTarget))
+newtype RATargets = RATargets
+    { unRATargets :: These Target
+        (These ReinstallAtomsTarget (NESet CustomTarget)) }
+    deriving (Show, Eq, Ord)
 
 -- | Convenience function to turn RATargets into a triple of monoids, which helps
 --   in the Semigroup definition
@@ -71,11 +74,11 @@ toMonoidTriple = bifoldMap
     (bifoldMap
         (\r -> (mempty, pure r, mempty))
         (\s -> (mempty, mempty, pure s))
-    )
+    ) . unRATargets
 
 -- | No Monoid instance since there is intentionally no empty element
 instance Semigroup RATargets where
-    sel1 <> sel2 = case conv (toMonoidTriple sel1 <> toMonoidTriple sel2) of
+    sel1 <> sel2 = RATargets $ case conv (toMonoidTriple sel1 <> toMonoidTriple sel2) of
         (Just t, Just r, Just s) -> These t (These r s)
         (Just t, Just r, Nothing) -> These t (This r)
         (Just t, Nothing, Just s) -> These t (That s)
@@ -123,7 +126,7 @@ getLoopType rm
     | any (== PretendBuild) (flags rm) = const NoLoop
     | otherwise = \case
     -- @--mode=reinstall-atoms@ should not loop if /only/ @--target=all@ is set
-    Portage (ReinstallAtomsMode (This AllInstalled)) -> NoLoop
+    Portage (ReinstallAtomsMode (RATargets (This AllInstalled))) -> NoLoop
 
     -- otherwise, it should always use UntilNoChange
     Portage (ReinstallAtomsMode _) -> UntilNoChange
@@ -155,7 +158,7 @@ getLoopType rm
 --   manager.
 getExtraRawArgs :: PkgManager -> ExtraRawArgs
 getExtraRawArgs = ExtraRawArgs . \case
-    Portage (ReinstallAtomsMode t) ->
+    Portage (ReinstallAtomsMode (RATargets t)) ->
         bifoldMap (const []) (bifoldMap fromRAT (const [])) t
     _ -> []
   where

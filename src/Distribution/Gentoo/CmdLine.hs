@@ -115,12 +115,12 @@ mkHUMode cmdLine raw
         :: NE.NonEmpty (Either CustomTarget BuildTarget)
         -> Either String Mode.RATargets
     mkPortageRATarget = foldTargets $ \case
-        Left ct -> Right $ That $ That $ singletonNE ct
-        Right WorldTarget -> Right $ That $ This $
+        Left ct -> Right $ Mode.RATargets $ That $ That $ singletonNE ct
+        Right WorldTarget -> Right $ Mode.RATargets $ That $ This $
             if cmdLineWorldFull cmdLine
                 then Mode.WorldFullTarget
                 else Mode.WorldTarget
-        targ -> This <$> mkPortageTarget targ
+        targ -> Mode.RATargets . This <$> mkPortageTarget targ
 
     -- Logic for parsing targets for portage's list mode; also common logic
     -- for parsing targets, between portage's basic and reinstall-atoms modes

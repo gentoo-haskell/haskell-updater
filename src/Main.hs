@@ -331,7 +331,7 @@ getPackageState = askPkgManager >>= \pkgMgr ->
                                 WorldFullTarget -> CustomTarget "@world"
                             )
                             (Set.fromList . map CustomTarget . toListNE)
-            (p,ts) <- case targ of
+            (p,ts) <- case unRATargets targ of
                 These ta th -> do
                     p <- pending ta
                     nt <- normalTarg ta
@@ -459,7 +459,7 @@ systemInfo pkgMgr rawArgs = do
             (:[]) <$> printRunMode (BasicMode targ)
         Right (PortageListMode targ) ->
             (:[]) <$> printRunMode (ListMode targ)
-        Right (ReinstallAtomsMode targ) ->
+        Right (ReinstallAtomsMode (RATargets targ)) ->
             let strs = bifoldMap
                     ((:[]) . \case
                         OnlyInvalid -> argString CmdLine.OnlyInvalid
