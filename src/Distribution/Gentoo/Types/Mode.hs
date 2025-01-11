@@ -1,5 +1,5 @@
 {- |
-   Module      : Distribution.Gentoo.Types.HUMode
+   Module      : Distribution.Gentoo.Types.Mode
    Description : Valid modes for haskell-updater
 
    This module houses a complex ADT which represents valid modes for
@@ -11,7 +11,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Distribution.Gentoo.Types.HUMode
+module Distribution.Gentoo.Types.Mode
     ( HUMode(..)
     , PkgManager(..)
     , RunMode(..)

@@ -31,7 +31,7 @@ import Distribution.Gentoo.Env
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
-import qualified Distribution.Gentoo.Types.HUMode as Mode
+import qualified Distribution.Gentoo.Types.Mode as Mode
 
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -117,7 +117,7 @@ defaultPMFlags Paludis       = [ "resolve"
 defaultPMFlags CustomPM{}    = []
 defaultPMFlags (InvalidPM _) = undefined
 
--- | Convert from a @HUMode@ 'Mode.PkgManager' to a 'PkgManager' as defined
+-- | Convert from a @Mode@ 'Mode.PkgManager' to a 'PkgManager' as defined
 --   in this module.
 toPkgManager :: Mode.PkgManager -> PkgManager
 toPkgManager (Mode.Portage _) = Portage

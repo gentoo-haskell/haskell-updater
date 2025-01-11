@@ -27,7 +27,7 @@ import Data.Proxy
 import System.IO (hPutStrLn, stderr)
 
 import Distribution.Gentoo.Types
-import Distribution.Gentoo.Types.HUMode
+import Distribution.Gentoo.Types.Mode
 import Output
 
 type Env = (RunModifier, PkgManager, RawPMArgs)

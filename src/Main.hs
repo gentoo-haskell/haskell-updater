@@ -28,7 +28,7 @@ import Distribution.Gentoo.GHC
 import Distribution.Gentoo.Packages
 import Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.Types as Types
-import Distribution.Gentoo.Types.HUMode as Mode
+import Distribution.Gentoo.Types.Mode as Mode
 import Distribution.Gentoo.Util (These(..), toListNE)
 
 import           Control.Monad         (unless, when)

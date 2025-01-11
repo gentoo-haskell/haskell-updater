@@ -3,7 +3,7 @@
 
    Functions and logic for parsing command line options and converting them
    into a valid internal representation of haskell-updater modes (see
-   @Distribution.Gentoo.Types.HUMode@).
+   @Distribution.Gentoo.Types.Mode@).
  -}
 
 {-# LANGUAGE LambdaCase #-}
@@ -29,7 +29,7 @@ import Distribution.Gentoo.CmdLine.Types
 import Distribution.Gentoo.PkgManager
 import Distribution.Gentoo.PkgManager.Types
 import Distribution.Gentoo.Types
-import qualified Distribution.Gentoo.Types.HUMode as Mode
+import qualified Distribution.Gentoo.Types.Mode as Mode
 import Distribution.Gentoo.Util (These(..), singletonNE)
 import Output
 
