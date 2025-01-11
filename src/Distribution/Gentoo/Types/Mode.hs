@@ -185,6 +185,7 @@ getExtraRawArgs :: PkgManager -> ExtraRawArgs
 getExtraRawArgs = ExtraRawArgs . \case
     Portage (ReinstallAtomsMode (RATargets t)) ->
         bifoldMap (const []) (bifoldMap fromRAT (const [])) t
+    Portage (PortageBasicMode _) -> ["--usepkg-exclude=*/*"]
     _ -> []
   where
     fromRAT = \case
