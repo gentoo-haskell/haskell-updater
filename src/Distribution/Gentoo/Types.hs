@@ -17,7 +17,6 @@ module Distribution.Gentoo.Types
   ( RunModifier(..)
   , RawPMArgs
   , WithCmd(..)
-  , WithUserCmd
   , PendingPackages(..)
   , Target(..)
   , RunHistory(..)
@@ -63,8 +62,6 @@ data WithCmd = PrintAndRun
              | PrintOnly
              | RunOnly
                deriving (Eq, Ord, Show, Read, Enum, Bounded)
-
-type WithUserCmd = Either String WithCmd
 
 -- | The set of packages that are currently broken and need to be rebuilt,
 --   as reported by @ghc-pkg check@. These may or may not equate to the
