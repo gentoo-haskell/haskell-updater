@@ -64,18 +64,6 @@ newtype RATargets = RATargets
         (These ReinstallAtomsTarget (NESet CustomTarget)) }
     deriving (Show, Eq, Ord)
 
--- | Convenience function to turn RATargets into a triple of monoids, which helps
---   in the Semigroup definition
-toMonoidTriple
-    :: RATargets
-    -> (Last Target, Last ReinstallAtomsTarget, Maybe (NESet CustomTarget))
-toMonoidTriple = bifoldMap
-    (\t -> (pure t, mempty, mempty))
-    (bifoldMap
-        (\r -> (mempty, pure r, mempty))
-        (\s -> (mempty, mempty, pure s))
-    ) . unRATargets
-
 -- | No Monoid instance since there is intentionally no empty element
 instance Semigroup RATargets where
     sel1 <> sel2 = RATargets $ case conv (toMonoidTriple sel1 <> toMonoidTriple sel2) of
@@ -90,6 +78,18 @@ instance Semigroup RATargets where
         (Nothing, Nothing, Nothing) -> undefined
       where
         conv (Last mt, Last mr, ms) = (mt,mr,ms)
+
+        -- | Convenience function to turn RATargets into a triple of monoids, which helps
+        --   in the Semigroup definition.
+        toMonoidTriple
+            :: RATargets
+            -> (Last Target, Last ReinstallAtomsTarget, Maybe (NESet CustomTarget))
+        toMonoidTriple = bifoldMap
+            (\t -> (pure t, mempty, mempty))
+            (bifoldMap
+                (\r -> (mempty, pure r, mempty))
+                (\s -> (mempty, mempty, pure s))
+            ) . unRATargets
 
 data PortageMode
     = PortageBasicMode (Either PortageBasicTarget Target)
@@ -125,21 +125,21 @@ getLoopType rm
       -- Always use NoLoop if --pretend is passed on the command line
     | any (== PretendBuild) (flags rm) = const NoLoop
     | otherwise = \case
-    -- @--mode=reinstall-atoms@ should not loop if /only/ @--target=all@ is set
-    Portage (ReinstallAtomsMode (RATargets (This AllInstalled))) -> NoLoop
+        -- @--mode=reinstall-atoms@ should not loop if /only/ @--target=all@ is set
+        Portage (ReinstallAtomsMode (RATargets (This AllInstalled))) -> NoLoop
 
-    -- otherwise, it should always use UntilNoChange
-    Portage (ReinstallAtomsMode _) -> UntilNoChange
+        -- otherwise, it should always use UntilNoChange
+        Portage (ReinstallAtomsMode _) -> UntilNoChange
 
-    -- @--target=preserved-rebuild@ should use UntilNoChange
-    Portage (PortageBasicMode (Left PreservedRebuild)) -> UntilNoChange
+        -- @--target=preserved-rebuild@ should use UntilNoChange
+        Portage (PortageBasicMode (Left PreservedRebuild)) -> UntilNoChange
 
-    -- The rest follow a standard pattern
-    Portage (PortageBasicMode (Right t)) -> fromTarget t
-    Portage (PortageListMode _) -> NoLoop
-    PkgCore mode -> fromRunMode mode
-    Paludis mode -> fromRunMode mode
-    CustomPM _ mode -> fromRunMode mode
+        -- The rest follow a standard pattern
+        Portage (PortageBasicMode (Right t)) -> fromTarget t
+        Portage (PortageListMode _) -> NoLoop
+        PkgCore mode -> fromRunMode mode
+        Paludis mode -> fromRunMode mode
+        CustomPM _ mode -> fromRunMode mode
   where
     fromRunMode :: RunMode -> LoopType
     fromRunMode = \case
