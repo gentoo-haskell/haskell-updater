@@ -58,25 +58,26 @@ data RunModifier = RM { flags    :: [PMFlag]
 -- | Arguments to be passed when calling the package manager
 type RawPMArgs = [String]
 
-data WithCmd = PrintAndRun
-             | PrintOnly
-             | RunOnly
+-- | How to handle the command for calling the package manager.
+data WithCmd = PrintAndRun -- ^ Print the command /and/ run it (default)
+             | PrintOnly -- ^ Only print the command
+             | RunOnly -- ^ Only run the command
                deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 -- | The set of packages that are currently broken and need to be rebuilt,
 --   as reported by @ghc-pkg check@. These may or may not equate to the
 --   'Target', depending on which mode @haskell-updater@ is running in.
 data PendingPackages
-    = InvalidPending InvalidPkgs
-    | AllPending AllPkgs
+    = InvalidPending InvalidPkgs -- ^ invalid (broken) installed Haskell packages
+    | AllPending AllPkgs -- ^ all installed Haskell packages
     deriving (Show, Eq, Ord)
 
 -- | The "targets" passed to the package manager, for instance package atoms
 --   or set strings.
 data Target
-    = TargetInvalid InvalidPkgs
-    | TargetAll AllPkgs
-    | CustomTarget String
+    = TargetInvalid InvalidPkgs -- ^ @--target=invalid@
+    | TargetAll AllPkgs -- ^ @--target=all@
+    | CustomTarget String -- ^ @--custom-target=...@
     deriving (Show, Eq, Ord)
 
 -- | The history of every rebuild run that has been attempted, including the

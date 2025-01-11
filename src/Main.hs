@@ -16,7 +16,21 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Main (main) where
+module Main
+    ( -- * Main mode
+      UpdaterLoop
+    , UpdateState
+    , IOEnv(..)
+    , runIOEnv
+    , runUpdater
+    , getPackageState
+      -- * Help mode
+    , help
+      -- * Version mode
+    , version
+      -- * @main@
+    , main
+    ) where
 
 import Distribution.Gentoo.CmdLine
 import qualified Distribution.Gentoo.CmdLine.Types as CmdLine -- (CmdLineArgs, BuildTarget)
@@ -113,8 +127,8 @@ dumpHistory (RunHistory pkgSet0 historySeq) = do
             ]
 
 -- | An action that controls the looping mechanism inside 'runUpdater'. This
---   holds the logic for what action to take after running @emerge@ (e.g. exit
---   with success/error or continue to the next iteration).
+--   holds the logic for what action to take after running the package manager
+--   (e.g. exit with success/error or continue to the next iteration).
 type UpdaterLoop m
     =  m () -- ^ The next iteration of the loop
     -> m ()
@@ -143,9 +157,9 @@ instance MonadExit IOEnv where
 runIOEnv :: IOEnv a -> UpdateState IOEnv -> EnvT IO a
 runIOEnv (IOEnv s) = evalStateT s
 
--- | Run the main part of @haskell-updater@ (e.g. not @--help@,
---   @--version@, or list mode). This expects the initial 'UpdateState' to
---   reflect the initial state of the system.
+-- | Run the main part of @haskell-updater@ (e.g. not @--help@ or @--version@).
+--   This expects the initial 'UpdateState' to reflect the initial state of the
+--   system.
 runUpdater
     :: forall m.
         ( MonadSay m

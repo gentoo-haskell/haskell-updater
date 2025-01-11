@@ -4,7 +4,8 @@
    Copyright   : (c) Ivan Lazar Miljenovic, Emil Karlson 2010
    License     : GPL-2 or later
 
-   This module defines ways to use different Gentoo package managers.
+   This module defines ways to use different Gentoo package managers. Much of
+   the module is historical in nature.
  -}
 
 {-# LANGUAGE FlexibleInstances #-}
@@ -13,7 +14,8 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Distribution.Gentoo.PkgManager
-       ( definedPMs
+       ( -- * Basic functions
+         definedPMs
        , choosePM
        , stringToCustomPM
        , isValidPM
@@ -21,9 +23,11 @@ module Distribution.Gentoo.PkgManager
        , defaultPMName
        , nameOfPM
        , toPkgManager
+         -- * BuildPkgs
        , BuildPkgs(..)
        , buildPkgsTargets
        , buildPkgsPending
+         -- * MonadWritePkgState
        , MonadWritePkgState(..)
        ) where
 
@@ -58,6 +62,7 @@ defaultPM = do eDPM <- lookup "PACKAGE_MANAGER" `fmap` getEnvironment
   where
     knownDef = pmNameMap M.! defaultPMName
 
+-- | The default package manager (currently @"portage"@)
 defaultPMName :: String
 defaultPMName = "portage"
 
@@ -65,19 +70,24 @@ defaultPMName = "portage"
 definedPMs :: [String]
 definedPMs = M.keys pmNameMap
 
+-- | Returns @Left pmname@ if the input is 'InvalidPM', or @Right pm@ otherwise
 isValidPM                    :: PkgManager -> Either String PkgManager
 isValidPM (InvalidPM pmname) = Left pmname
 isValidPM pm                 = Right pm
 
+-- | Map from string representations of package managers to their 'PkgManager'
+--   representation, e.g. @"portage"@ to @v'Portage'@.
 pmNameMap :: Map String PkgManager
 pmNameMap = M.fromList [ ("portage", Portage)
                        , ("pkgcore", PkgCore)
                        , ("paludis", Paludis)
                        ]
 
+-- | Inverted version of 'pmNameMap'
 pmNameMap' :: Map PkgManager String
 pmNameMap' = M.fromList . map (\(nm,pm) -> (pm,nm)) $ M.toList pmNameMap
 
+-- | Human-readable name or description of a package manager
 nameOfPM                    :: PkgManager -> String
 nameOfPM (CustomPM pmname)  = "custom package manager command: " ++ pmname
 nameOfPM (InvalidPM pmname) = "invalid package manager: " ++ pmname
@@ -90,9 +100,11 @@ choosePM pm = fromMaybe (InvalidPM pm) $ pm' `M.lookup` pmNameMap
     where
       pm' = map toLower pm
 
+-- | Create a v'CustomPM' from a 'String'
 stringToCustomPM :: String -> PkgManager
 stringToCustomPM = CustomPM
 
+-- | Command-line compatible name for a 'PkgManager'
 pmCommand                :: PkgManager -> String
 pmCommand Portage        = "emerge"
 pmCommand PkgCore        = "pmerge"
@@ -100,6 +112,7 @@ pmCommand Paludis        = "cave"
 pmCommand (CustomPM cmd) = cmd
 pmCommand (InvalidPM _)  = undefined
 
+-- | Default command line flags for the given package manager
 defaultPMFlags               :: PkgManager -> [String]
 defaultPMFlags Portage       = [ "--oneshot"
                                , "--keep-going"
@@ -117,8 +130,8 @@ defaultPMFlags Paludis       = [ "resolve"
 defaultPMFlags CustomPM{}    = []
 defaultPMFlags (InvalidPM _) = undefined
 
--- | Convert from a @Mode@ 'Mode.PkgManager' to a 'PkgManager' as defined
---   in this module.
+-- | Convert from a "Distributions.Gentoo.Types.Mode" 'Mode.PkgManager' to a
+--   'PkgManager' as defined in "Distribution.Gentoo.PkgManager.Types".
 toPkgManager :: Mode.PkgManager -> PkgManager
 toPkgManager (Mode.Portage _) = Portage
 toPkgManager (Mode.PkgCore _) = PkgCore
@@ -197,6 +210,8 @@ instance MonadWritePkgState m => MonadWritePkgState (StateT s m) where
 instance MonadWritePkgState m => MonadWritePkgState (ReaderT r m) where
     buildPkgs = lift . buildPkgs
 
+-- | Depending on the 'WithCmd' passed, print or execute (or both) a given
+--   command. @stdout@ and @stderr@ are discarded.
 runCmd :: WithCmd -> String -> [String] -> IO ExitCode
 runCmd m cmd args = case m of
     RunOnly     ->                      rawSystem cmd args
@@ -208,6 +223,7 @@ runCmd m cmd args = case m of
         | words s == [s] = s
         | otherwise = show s -- Put quotes around args with spaces in them
 
+-- | Create a command for invoking the given 'Mode.PkgManager'.
 buildCmd
     :: Mode.PkgManager
     -> [PMFlag] -- ^ Basic flags
@@ -221,13 +237,9 @@ buildCmd mpm fs (ExtraRawArgs rawArgs) userArgs targs =
     ++ mapMaybe (flagRep pm) fs
     ++ rawArgs
     ++ userArgs
-    ++ excl
     ++ printTargets targs
     )
   where
-    excl = case pm of
-        Portage -> ["--usepkg=n"]
-        _ -> []
     pm = toPkgManager mpm
 
 -- | Alternative version of 'buildCmd' which uses experimental @emerge@

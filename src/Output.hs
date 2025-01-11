@@ -10,14 +10,16 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Output (
-                pkgListPrintLn
-              , printList
+module Output ( -- * Verbosity
+                Verbosity(..)
+                -- * MonadSay
               , MonadSay(..)
               , say
               , vsay
+              , pkgListPrintLn
+              , printList
+                -- * SayIO
               , SayIO(..)
-              , Verbosity(..)
               ) where
 
 import Control.Monad.Reader
@@ -27,10 +29,10 @@ import System.IO (hPutStrLn, stderr)
 
 import Distribution.Gentoo.Packages
 
--- output mode (chattiness)
-data Verbosity = Quiet
-               | Normal
-               | Verbose
+-- | output mode (chattiness)
+data Verbosity = Quiet -- ^ Minimal information is printed (@--quiet@)
+               | Normal -- ^ Some information is printed (default)
+               | Verbose -- ^ Extra information is printed (@--verbose@)
      deriving (Eq, Ord, Show, Read)
 
 -- | Monads that have an environment that stores the specified verbosity level,
@@ -39,23 +41,26 @@ class Monad m => MonadSay m where
     outputLn :: String -> m () -- ^ Output a line
     askVerbosity :: m Verbosity
 
+-- | Print a message that will show up if verbosity is set to 'Normal' or
+--   'Verbose'.
 say :: MonadSay m => String -> m ()
 say msg = askVerbosity >>= \case
         Quiet   -> return ()
         Normal  -> outputLn msg
         Verbose -> outputLn msg
 
+-- | Print a message that will only show up if verbosity is set to 'Verbose'
 vsay :: MonadSay m => String -> m ()
 vsay msg = askVerbosity >>= \case
         Quiet   -> return ()
         Normal  -> return ()
         Verbose -> outputLn msg
 
--- Print a bullet list of values with one value per line.
+-- | Print a bullet list of values with one value per line.
 printList :: MonadSay m => (a -> String) -> [a] -> m ()
 printList f = mapM_ (say . (++) "  * " . f)
 
--- Print a list of packages, with a description of what they are.
+-- | Print a list of packages, with a description of what they are.
 pkgListPrintLn :: MonadSay m => String -> Set.Set Package -> m ()
 pkgListPrintLn desc pkgs
     | null pkgs = do

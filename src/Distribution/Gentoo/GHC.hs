@@ -12,11 +12,13 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Distribution.Gentoo.GHC
-       ( ghcVersion
+       ( -- * Misc
+         CabalPV(..)
+       , ghcVersion
        , ghcLoc
        , ghcLibDir
+         -- * MonadPkgState
        , MonadPkgState(..)
-       , unCPV
        ) where
 
 import Distribution.Gentoo.Env
@@ -57,7 +59,7 @@ import Output
 
 -- Common helper utils, etc.
 
--- Get only the first line of output
+-- | Get only the first line of output
 rawSysStdOutLine     :: FilePath -> [String] -> IO String
 rawSysStdOutLine app args = do
     out <- rawCommand app args
@@ -91,29 +93,29 @@ rawCommand cmd args = do (out,_,_) <- DSU.rawSystemStdInOut
                          return out
 #endif /* MIN_VERSION_Cabal(2,1,0) */
 
--- Get the first line of output from calling GHC with the given
--- arguments.
+-- | Get the first line of output from calling GHC with the given
+--   arguments.
 ghcRawOut      :: [String] -> IO String
 ghcRawOut args = ghcLoc >>= flip rawSysStdOutLine args
 
--- Cheat with using fromJust since we know that GHC must be in $PATH
--- somewhere, probably /usr/bin.
+-- | Cheat with using fromJust since we know that GHC must be in $PATH
+--   somewhere, probably /usr/bin.
 ghcLoc :: IO FilePath
 ghcLoc = fromJust <$> findExecutable "ghc"
 
--- The version of GHC installed.
+-- | The version of GHC installed.
 ghcVersion :: IO String
 ghcVersion = dropWhile (not . isDigit) <$> ghcRawOut ["--version"]
 
--- The directory where GHC has all its libraries, etc.
+-- | The directory where GHC has all its libraries, etc.
 ghcLibDir :: IO FilePath
 ghcLibDir = canonicalizePath =<< ghcRawOut ["--print-libdir"]
 
 ghcPkgRawOut      :: [String] -> IO String
 ghcPkgRawOut args = ghcPkgLoc >>= flip rawCommand args
 
--- Cheat with using fromJust since we know that ghc-pkg must be in $PATH
--- somewhere, probably /usr/bin.
+-- | Cheat with using fromJust since we know that ghc-pkg must be in $PATH
+--   somewhere, probably /usr/bin.
 ghcPkgLoc :: IO FilePath
 ghcPkgLoc = fromJust <$> findExecutable "ghc-pkg"
 
@@ -121,7 +123,7 @@ ghcConfsPath, gentooConfsPath :: FilePath
 ghcConfsPath = "package.conf.d"
 gentooConfsPath = "gentoo"
 
--- Return the Gentoo .conf files found in this GHC libdir
+-- | Return the Gentoo .conf files found in this GHC libdir
 listConfFiles :: FilePath -> IO [FilePath]
 listConfFiles subdir = do
     dir <- ghcLibDir
@@ -135,29 +137,32 @@ listConfFiles subdir = do
   where
     isConf file = takeExtension file == ".conf"
 
+-- | String representation of a package and version from Cabal
 newtype CabalPV = CPV { unCPV :: String } -- serialized 'PackageIdentifier'
     deriving (Ord, Eq, Show)
 
--- Unique (normal) or multiple (broken) mapping
+-- | Unique (normal) or multiple (broken) mapping
 type ConfMap = Map.Map CabalPV [FilePath]
 
--- Fold Gentoo .conf files from the current GHC version and
--- create a Map
+-- | Fold Gentoo .conf files from the current GHC version and
+--   create a Map
 foldConf :: (MonadSay m, MonadIO m) => [FilePath] -> m ConfMap
 foldConf = foldM addConf Map.empty
 
--- cabal package text format
--- "[InstalledPackageInfo {installedPackageId = Insta..."
+-- | cabal package text format
+--   @"[InstalledPackageInfo {installedPackageId = Insta..."@
 parse_as_cabal_package :: BS.ByteString -> Maybe InstalledPackageInfo
 parse_as_cabal_package cont =
     case parseInstalledPackageInfo cont of
         Left _es -> Nothing
         Right (_ws, ipi) -> Just ipi
 
--- ghc package text format
--- "name: zlib-conduit\n
---  version: 1.1.0\n
---  id: zlib-condui..."
+-- | ghc package text format
+--   @
+--       "name: zlib-conduit\n
+--       version: 1.1.0\n
+--       id: zlib-condui..."
+--   @
 parse_as_ghc_package :: BS.ByteString -> Maybe CabalPV
 parse_as_ghc_package cont =
     case (map BS.words . BS.lines) cont of
@@ -268,8 +273,8 @@ instance MonadPkgState m => MonadPkgState (ReaderT r m) where
     brokenPkgs = lift brokenPkgs
     allInstalledPkgs = lift allInstalledPkgs
 
--- Find packages installed by other versions of GHC in this possible
--- library directory.
+-- | Find packages installed by other versions of GHC in this possible
+--   library directory.
 checkLibDirs :: (MonadSay m, MonadIO m)
     => BSFilePath -> [BSFilePath] -> m (Set.Set Package)
 checkLibDirs thisGhc libDirs =
@@ -292,8 +297,8 @@ checkLibDirs thisGhc libDirs =
     isInvalid fp = fp == thisGhc || BS.isPrefixOf (thisGhc `BS.snoc` pathSeparator) fp
 #endif
 
--- A valid GHC library directory starting at libdir has a name of
--- "ghc", then a hyphen and then a version number.
+-- | A valid GHC library directory starting at libdir has a name of
+--   "ghc", then a hyphen and then a version number.
 isGhcLibDir :: BSFilePath -> BSFilePath -> Bool
 isGhcLibDir libdir dir = go ghcDirName
   where
@@ -309,7 +314,7 @@ isGhcLibDir libdir dir = go ghcDirName
         ghcDirLen = BS.length ghcDir
 
 
--- The possible places GHC could have installed lib directories
+-- | The possible places GHC could have installed lib directories
 libFronts :: [BSFilePath]
 libFronts = map BS.pack
             $ do lib <- ["lib", "lib64"]
@@ -317,12 +322,12 @@ libFronts = map BS.pack
 
 -- -----------------------------------------------------------------------------
 
--- .conf files from broken packages of this GHC version
--- Returns two lists:
--- '[CabalPV]' - list of broken cabal packages we could not resolve
---               to Gentoo's .conf files
--- '[FilePath]' - list of '.conf' files resolved from broken
---                CabalPV reported by 'ghc-pkg check'
+-- | .conf files from broken packages of this GHC version
+--   Returns two lists:
+--       * @[CabalPV]@ - list of broken cabal packages we could not resolve
+--                       to Gentoo's .conf files
+--       * @[FilePath]@ - list of '.conf' files resolved from broken
+--                        CabalPV reported by 'ghc-pkg check'
 brokenConfs :: (MonadSay m, MonadIO m) => m ([CabalPV], [FilePath])
 brokenConfs =
     do vsay "brokenConfs: getting broken output from 'ghc-pkg'"
@@ -374,8 +379,8 @@ brokenConfs =
             Just fps -> Right fps
             Nothing -> Left cpv
 
--- Return the closure of all packages affected by breakage
--- in format of ["name-version", ... ]
+-- | Return the closure of all packages affected by breakage
+--   in format of ["name-version", ... ]
 getBrokenGhcPkg :: IO [CabalPV]
 getBrokenGhcPkg = map CPV . words
                   <$> ghcPkgRawOut ["check", "--simple-output"]
@@ -394,27 +399,27 @@ getOrphanBroken = do
                                   fmap parse_as_ghc_package . BS.readFile
        return (orphan_packages, orphan_conf_files)
 
--- Return packages, that seem to have
--- been installed via emerge (have gentoo/.conf entry),
--- but are not registered in package.conf.d.
--- Usually happens on manual cleaning or
--- due to unregistration bugs in old eclass.
+-- | Return packages, that seem to have
+--   been installed via emerge (have gentoo/.conf entry),
+--   but are not registered in package.conf.d.
+--   Usually happens on manual cleaning or
+--   due to unregistration bugs in old eclass.
 getNotRegistered :: (MonadSay m, MonadIO m) => m [CabalPV]
 getNotRegistered = do
     installed_confs  <- liftIO (listConfFiles gentooConfsPath) >>= foldConf
     registered_confs <- liftIO (listConfFiles ghcConfsPath) >>= foldConf
     return $ Map.keys installed_confs L.\\ Map.keys registered_confs
 
--- Return packages, that seem to have
--- been installed more, than once.
--- It usually happens this way:
---  1. user installs dev-lang/ghc-7.8.4-r0 (comes with bundled transformers-3.0.0.0-ghc-7.8.4-{abi}.conf)
---  2. user installs dev-haskell/transformers-0.4.3.0 (registered as transformers-0.4.3.0-{abi}.conf)
---  3. user upgrades up to dev-lang/ghc-7.8.4-r4 (comes with bundled transformers-0.4.3.0-ghc-7.8.4-{abi}.conf)
--- this way we have single package registered twice:
---   transformers-0.4.3.0-ghc-7.8.4-{abi}.conf
---   transformers-0.4.3.0-{abi}.conf
--- It's is easy to fix just by reinstalling transformers.
+-- | Return packages, that seem to have
+--   been installed more, than once.
+--   It usually happens this way:
+--       1. user installs dev-lang/ghc-7.8.4-r0 (comes with bundled @transformers-3.0.0.0-ghc-7.8.4-{abi}.conf@)
+--       2. user installs dev-haskell/transformers-0.4.3.0 (registered as @transformers-0.4.3.0-{abi}.conf@)
+--       3. user upgrades up to dev-lang/ghc-7.8.4-r4 (comes with bundled @transformers-0.4.3.0-ghc-7.8.4-{abi}.conf@)
+--   this way we have single package registered twice:
+--       * @transformers-0.4.3.0-ghc-7.8.4-{abi}.conf@
+--       * @transformers-0.4.3.0-{abi}.conf@
+--   It's is easy to fix just by reinstalling transformers.
 getRegisteredTwice :: (MonadSay m, MonadIO m) => m [CabalPV]
 getRegisteredTwice = do
     registered_confs <- liftIO (listConfFiles ghcConfsPath) >>= foldConf

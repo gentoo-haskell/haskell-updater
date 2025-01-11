@@ -9,12 +9,17 @@
    packages in Gentoo.
 -}
 module Distribution.Gentoo.Packages
-       ( Package(..)
-       , Content
+       ( -- * Basic
+         Package(..)
        , notGHC
        , printPkg
        , resolveFiles
+         -- * CONTENTS files
+       , Content(..)
+         -- ** Searching
        , pkgsHaveContent
+         -- *** Predicates
+       , hasContentMatching
        , hasDirMatching
        ) where
 
@@ -38,18 +43,18 @@ import Distribution.Gentoo.Util
 -- overly simplified.
 
 type Category = String
-type Pkg = String -- Package name.
-type VerPkg = String -- Package name with version.
+type Pkg = String -- ^ Package name.
+type VerPkg = String -- ^ Package name with version.
 type VCatPkg = (Category, VerPkg)
 type Slot = String
 
--- When we are (re-)building packages, we don't care about the
--- version, just the slot.
+-- | When we are (re-)building packages, we don't care about the
+--   version, just the slot.
 data Package = Package Category Pkg (Maybe Slot)
              deriving(Eq, Ord, Show, Read)
 
--- Package equality, ignoring the Slot (i.e. same category and package
--- name).
+-- | Package equality, ignoring the Slot (i.e. same category and package
+--   name).
 samePackageAs :: Package -> Package -> Bool
 samePackageAs (Package c1 p1 _) (Package c2 p2 _)
   = c1 == c2 && p1 == p2
@@ -57,27 +62,27 @@ samePackageAs (Package c1 p1 _) (Package c2 p2 _)
 ghcPkg :: Package
 ghcPkg = Package "dev-lang" "ghc" Nothing
 
--- Return all packages that are not a version of GHC.
+-- | Return all packages that are not a version of GHC.
 notGHC :: S.Set Package -> S.Set Package
 notGHC = S.filter (isNot ghcPkg)
   where
     isNot p1 = not . samePackageAs p1
 
--- Pretty-print the Package name based on how PMs expect it
+-- | Pretty-print the Package name based on how PMs expect it
 printPkg                 :: Package -> String
 printPkg (Package c p s) = addS cp
   where
     addS = maybe id (flip (++) . (:) ':') s
     cp = c ++ '/' : p
 
--- Determine which slot the specific version of the package is in and
--- create the appropriate Package value.
+-- | Determine which slot the specific version of the package is in and
+--   create the appropriate Package value.
 toPackage           :: VCatPkg -> IO Package
 toPackage cp@(c,vp) = do sl <- getSlot cp
                          let p = stripVersion vp
                          return $ Package c p sl
 
--- Determine which slot the specific version of the package is in.
+-- | Determine which slot the specific version of the package is in.
 getSlot    :: VCatPkg -> IO (Maybe Slot)
 getSlot cp = do ex <- doesFileExist sFile
                 if ex
@@ -116,7 +121,7 @@ pkgDBDir = "/var/db/pkg"
 
 -- Parsing the CONTENTS file of installed packages.
 
--- Representation of individual lines in a CONTENTS file.
+-- | Representation of individual lines in a CONTENTS file.
 data Content = Dir BSFilePath
              | Obj BSFilePath
                deriving (Eq, Show, Ord)
@@ -131,13 +136,15 @@ pathOf (Obj obj) = obj
 
 -- Searching predicates.
 
+-- | Search a CONTENTS file for paths that match the given predicate.
 hasContentMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
 hasContentMatching p = any (p . pathOf)
 
+-- | Search a CONTENTS file for directory paths that match the given predicate.
 hasDirMatching   :: (BSFilePath -> Bool) -> [Content] -> Bool
 hasDirMatching p = hasContentMatching p . filter isDir
 
--- Parse the CONTENTS file.
+-- | Parse the CONTENTS file.
 parseContents    :: VCatPkg -> IO [Content]
 parseContents cp = do ex <- doesFileExist cFile
                       if ex
@@ -170,7 +177,7 @@ parseContents cp = do ex <- doesFileExist cFile
 
 -- -----------------------------------------------------------------------------
 
--- Find all the packages that contain given files.
+-- | Find all the packages that contain given files.
 resolveFiles :: [FilePath] -> IO (S.Set (FilePath, Package))
 resolveFiles fps = S.fromList . expand <$> forPkg grep
   where
@@ -202,17 +209,16 @@ forPkg p = do
         let c2 = not $ "-MERGING-" `isPrefixOf` vp
         return $ c1 && c2
 
--- Find which packages have Content information that matches the
--- provided predicate; to be used with the searching predicates
--- above.
+-- | Find which packages have Content information that matches the
+--   provided predicate; to be used with the searching predicates.
 pkgsHaveContent   :: ([Content] -> Bool) -> IO (S.Set Package)
 pkgsHaveContent p = S.fromList <$> forPkg p'
     where p' pn cont = if p cont
                            then Just pn
                            else Nothing
 
--- Determine if this is a valid Category (such that at least one
--- package in that category has been installed).
+-- | Determine if this is a valid Category (such that at least one
+--   package in that category has been installed).
 isCat    :: String -> IO Bool
 isCat fp = do isD <- doesDirectoryExist (pkgDBDir </> fp)
               return $ isD && isCat' fp
@@ -221,6 +227,6 @@ isCat fp = do isD <- doesDirectoryExist (pkgDBDir </> fp)
     isCat' "world" = False
     isCat' _       = True
 
--- Return all Categories known in this system.
+-- | Return all Categories known in this system.
 installedCats :: IO [Category]
 installedCats = filterM isCat =<< listDirectory pkgDBDir

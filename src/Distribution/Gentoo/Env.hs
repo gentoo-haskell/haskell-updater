@@ -30,8 +30,19 @@ import Distribution.Gentoo.Types
 import Distribution.Gentoo.Types.Mode
 import Output
 
+-- | Basic environment data to be available during run time. This only makes
+--   sense for normal operation (v'RunMode' vs. 'HelpMode'/'VersionMode'
+--   constructors of 'HUMode').
 type Env = (RunModifier, PkgManager, RawPMArgs)
 
+-- | Make the global 'Env' available via 'MonadReader'. See also the
+--   specialized methods for accessing this data:
+--
+--   * 'askRunModifier'
+--   * 'askPkgManager'
+--       * 'askLoopType'
+--       * 'askExtraRawArgs'
+--   * 'askRawPMArgs'
 newtype EnvT m a = EnvT
     { runEnvT :: Env -> m a }
     deriving stock Functor

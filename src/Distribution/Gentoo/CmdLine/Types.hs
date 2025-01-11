@@ -17,11 +17,12 @@ module Distribution.Gentoo.CmdLine.Types
     , BuildTarget(..)
     , CustomTarget
     , RunMode(..)
+      -- * Multiple-choice arguments
     , CmdlineOpt(..)
-      -- * getter functions
+      -- ** getter functions
     , argString
     , argDescription
-      -- * utility functions
+      -- ** utility functions
     , argHelp
     , fromCmdline
     ) where
@@ -37,46 +38,48 @@ import Output
 
 -- | Represents possible options given on the command line
 data CmdLineArgs = CmdLineArgs
-    { cmdLinePkgManager :: PkgManager
-    , cmdLinePretend :: Bool
-    , cmdLineNoDeep :: Bool
-    , cmdLineVersion :: Bool
-    , cmdLineAction :: WithCmd
-    , cmdLineTargets :: Maybe (NE.NonEmpty (Either CustomTarget BuildTarget))
-    , cmdLineMode :: RunMode
-    , cmdLineVerbosity :: Verbosity
-    , cmdLineHelp :: Bool
+    { cmdLinePkgManager :: PkgManager -- ^ @--package-manager@ or @--custom-pm@
+    , cmdLinePretend :: Bool -- ^ @--pretend@
+    , cmdLineNoDeep :: Bool -- ^ @--no-deep@
+    , cmdLineVersion :: Bool -- ^ @--version@
+    , cmdLineAction :: WithCmd -- ^ @--action@
+    , cmdLineTargets :: Maybe (NE.NonEmpty (Either CustomTarget BuildTarget)) -- ^ @--target@
+    , cmdLineMode :: RunMode -- ^ @--mode@
+    , cmdLineVerbosity :: Verbosity -- ^ @--verbose@ or @--quiet@
+    , cmdLineHelp :: Bool -- ^ @--help@
+
       -- This would be better off as another BuildTarget option, but then we
       -- would lose the cool CmdlineOpt automagic
-    , cmdLineWorldFull :: Bool
+    , cmdLineWorldFull :: Bool -- ^ @--world-full@
     } deriving (Show, Eq, Ord)
 
 defCmdLineArgs :: PkgManager -> CmdLineArgs
 defCmdLineArgs defPM = CmdLineArgs
-    defPM
-    False
-    False
-    False
-    PrintAndRun
-    Nothing
-    BasicMode
-    Normal
-    False
-    False
+    { cmdLinePkgManager = defPM
+    , cmdLinePretend = False
+    , cmdLineNoDeep = False
+    , cmdLineVersion = False
+    , cmdLineAction = PrintAndRun
+    , cmdLineTargets = Nothing
+    , cmdLineMode = BasicMode
+    , cmdLineVerbosity = Normal
+    , cmdLineHelp = False
+    , cmdLineWorldFull = False
+    }
 
 data BuildTarget
     = OnlyInvalid -- ^ Default
-    | AllInstalled -- ^ Rebuild every haskell package
-    | WorldTarget -- ^ Target @world portage set
-    | PreservedRebuild -- ^ Append @preserved-rebuild set
+    | AllInstalled -- ^ Rebuild every Haskell package
+    | WorldTarget -- ^ Target @@world@ portage set
+    | PreservedRebuild -- ^ Append @@preserved-rebuild@ set
     deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 type CustomTarget = String
 
 data RunMode
-    = BasicMode
-    | ListMode
-    | ReinstallAtomsMode
+    = BasicMode -- ^ @--mode=basic@
+    | ListMode -- ^ @--mode=list@
+    | ReinstallAtomsMode -- ^ @--mode=reinstall-atoms@ (portage only)
     deriving (Show, Eq, Ord, Enum, Bounded)
 
 -- | A class for multiple-choice options selected by an argument on the command

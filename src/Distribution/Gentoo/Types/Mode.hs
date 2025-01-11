@@ -33,12 +33,18 @@ import Distribution.Gentoo.Types hiding (Target)
 import Distribution.Gentoo.Util (These(..), NESet(..))
 import Distribution.Gentoo.PkgManager.Types (PMFlag(..))
 
+-- | Top level run modes for @haskell-updater@ including @--help@ and
+--   @--version@, which do not run the @runUpdater@ function in "Main".
+--   v'RunMode' is used during normal use of the utility.
 data HUMode
     = HelpMode
     | VersionMode
     | RunMode RunModifier PkgManager
     deriving (Eq, Ord, Show)
 
+-- | Choice of supported package managers. Currently, portage has more modes
+--   available, such as @--mode=reinstall-atoms@, which are encoded in
+--   'PortageMode'.
 data PkgManager
     = Portage PortageMode
     | PkgCore RunMode
@@ -46,19 +52,22 @@ data PkgManager
     | CustomPM String RunMode
     deriving (Eq, Ord, Show)
 
+-- | Basic run modes that are available for all package managers.
 data RunMode
     = BasicMode Target
     | ListMode Target
     deriving (Eq, Ord, Show)
 
+-- | Basic targets that are available for all package managers.
 data Target
     = OnlyInvalid
     | AllInstalled
     deriving (Eq, Ord, Show)
 
+-- | Custom target to be passed to the package manager.
 type CustomTarget = String
 
--- | Encodes valid target combinations for 'ReinstallAtomsMode'
+-- | Encodes valid target combinations for 'ReinstallAtomsMode' (portage only).
 newtype RATargets = RATargets
     { unRATargets :: These Target
         (These ReinstallAtomsTarget (NESet CustomTarget)) }
@@ -91,26 +100,43 @@ instance Semigroup RATargets where
                 (\s -> (mempty, mempty, pure s))
             ) . unRATargets
 
+-- | Modes that are available for portage. This includes the basic
+--   'PortageBasicMode' and 'PortageListMode' (which correspond to
+--   'BasicMode' and 'ListMode' respectively), but also 'ReinstallAtomsMode',
+--   which is specific to portage.
 data PortageMode
     = PortageBasicMode (Either PortageBasicTarget Target)
     | PortageListMode Target
     | ReinstallAtomsMode RATargets
     deriving (Eq, Ord, Show)
 
+-- | Extra targets that are available for portage in @--mode=basic@. Currently,
+--   this only includes @@preserved-rebuild@.
 data PortageBasicTarget = PreservedRebuild
     deriving (Eq, Ord, Show)
 
+-- | Targets that are availble only for @--mode=reinstall-atoms' (portage
+--   only). This includes 'WorldTarget' (@@world@) and 'WorldFullTarget', a
+--   special convenience target which adds @@world@ to the target list and
+--   also passes @--newuse --with-bdeps=y@ to portage for convenience.
+--   (See 'getExtraRawArgs').
 data ReinstallAtomsTarget
     = WorldTarget
     | WorldFullTarget
     deriving (Eq, Ord, Show)
 
+-- | Extract the t'RunMode' (or 'PortageMode') from the 'HUMode' ADT.
+--
+--   Like other functions in this module, it takes a 'PkgManager' (as opposed
+--   to 'HUMode'), since only the v'RunMode' constructor of 'HUMode' is
+--   relevant.
 runMode :: PkgManager -> Either RunMode PortageMode
 runMode (Portage rm) = Right rm
 runMode (PkgCore rm) = Left rm
 runMode (Paludis rm) = Left rm
 runMode (CustomPM _ rm) = Left rm
 
+-- | Extract the 'Target' from a t'RunMode' constructor.
 getTarget :: RunMode -> Target
 getTarget (BasicMode t) = t
 getTarget (ListMode t) = t
@@ -118,8 +144,9 @@ getTarget (ListMode t) = t
 -- | Convert from the @haskell-updater@ ADT to 'LoopMode', which encodes
 --   how the looping mechanism of @haskell-updater@ should funciton.
 --
---   Takes a 'PkgManager' as 'RunMode' is the only mode where looping makes
---   sense. Returns 'NoLoop' if the @--pretend@ flag was passed.
+--   Like other functions in this module, it takes a 'PkgManager' (as opposed
+--   to 'HUMode'), since only the v'RunMode' constructor of 'HUMode' is
+--   relevant.
 getLoopType :: RunModifier -> PkgManager -> LoopType
 getLoopType rm
       -- Always use NoLoop if --pretend is passed on the command line
@@ -151,11 +178,12 @@ getLoopType rm
         OnlyInvalid -> UntilNoPending
         AllInstalled -> NoLoop
 
--- | Convert from the @haskell-updater@ ADT to 'ExtraRawArgs', hard-coded extra
+-- | Convert from the 'HUMode' ADT to 'ExtraRawArgs', hard-coded extra
 --   arguments that will be passed to the package manager.
 --
---   Takes a 'PkgManager' as 'RunMode' is the only mode which runs a package
---   manager.
+--   Like other functions in this module, it takes a 'PkgManager' (as opposed
+--   to 'HUMode'), since only the v'RunMode' constructor of 'HUMode' is
+--   relevant.
 getExtraRawArgs :: PkgManager -> ExtraRawArgs
 getExtraRawArgs = ExtraRawArgs . \case
     Portage (ReinstallAtomsMode (RATargets t)) ->
