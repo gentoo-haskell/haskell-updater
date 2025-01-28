@@ -333,9 +333,8 @@ getPackageState = askPkgManager >>= \pkgMgr ->
         Right (PortageListMode targ) -> fromRunMode (ListMode targ)
         Right (ReinstallAtomsMode targ) -> flip evalStateT Nothing $ do
             aps <- getAll
-            let pending = \case
-                    OnlyInvalid -> withIPCache InvalidPending
-                    AllInstalled -> pure $ AllPending aps
+                -- Only use InvalidPending with ReinstallAtomsMode
+            let pending _ = withIPCache InvalidPending
                 normalTarg = \case
                     OnlyInvalid -> withIPCache TargetInvalid
                     AllInstalled -> pure $ TargetAll aps

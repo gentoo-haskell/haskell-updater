@@ -152,7 +152,7 @@ getLoopType rm
       -- Always use NoLoop if --pretend is passed on the command line
     | any (== PretendBuild) (flags rm) = const NoLoop
     | otherwise = \case
-        -- otherwise, it should always use UntilNoChange
+        -- ReinstallAtomsMode should always use UntilNoChange
         Portage (ReinstallAtomsMode _) -> UntilNoChange
 
         -- @--target=preserved-rebuild@ should use UntilNoChange
