@@ -152,9 +152,6 @@ getLoopType rm
       -- Always use NoLoop if --pretend is passed on the command line
     | any (== PretendBuild) (flags rm) = const NoLoop
     | otherwise = \case
-        -- @--mode=reinstall-atoms@ should not loop if /only/ @--target=all@ is set
-        Portage (ReinstallAtomsMode (RATargets (This AllInstalled))) -> NoLoop
-
         -- otherwise, it should always use UntilNoChange
         Portage (ReinstallAtomsMode _) -> UntilNoChange
 
