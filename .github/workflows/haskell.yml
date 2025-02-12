@@ -1,5 +1,4 @@
 name: Haskell CI
-
 on:
   push:
     branches: [ master ]
@@ -39,6 +38,9 @@ jobs:
           cabal-version: 'latest'
           cabal-update: true
 
+      - name: Check cabal file
+        run: cabal check
+
       - name: Configure the build
         run: |
           cabal configure --enable-tests --enable-benchmarks --disable-documentation --flag=pedantic
@@ -73,5 +75,5 @@ jobs:
       - name: Run tests
         run: cabal test all --test-option=--color --test-show-details=streaming --jobs=1
 
-      - name: Check cabal file
-        run: cabal check
+      - name: Build documentation
+        run: cabal haddock all
