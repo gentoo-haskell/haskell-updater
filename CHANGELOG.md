@@ -1,3 +1,13 @@
+## v1.5.0.0 (2025-03-06)
+
+Release v1.5.0.0
+
+- Add `--world-full` and `--preserved-rebuild` modes
+- Allow mixing/matching targets for `--reinstall-atoms` mode
+- Improve readability of output
+- Many internal improvments for code readability and ensuring proper behavior
+  (no tests yet, but much has been done to pave the way for this)
+
 ## v1.4.1.0 (2024-06-30)
 
 Release v1.4.1.0
