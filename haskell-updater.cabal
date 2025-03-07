@@ -78,14 +78,14 @@ executable haskell-updater
 
   autogen-modules:  Paths_haskell_updater
   build-depends:
-    , base        >=4.12 && <5
-    , bytestring
-    , Cabal       >=1.8
-    , containers
-    , directory   >=1.2.5.0
-    , filepath
-    , mtl
-    , process
+    , base        >=4.15.1.0 && <5
+    , bytestring  >=0.10.12.1 && <0.13
+    , Cabal       >=3.4.1.0 && <3.15
+    , containers  >=0.6.4.1 && <0.8
+    , directory   >=1.2.5.0 && <1.4
+    , filepath    >=1.4.2.1 && <1.6
+    , mtl         >=2.2.2 && <2.3.1
+    , process     ^>=1.6.13.2
 
   -- Only force new bytestring on versions of GHC that come bundled with it
   if impl(ghc >= 9.2.1)
