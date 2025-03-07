@@ -84,7 +84,7 @@ executable haskell-updater
     , containers  >=0.6.4.1 && <0.8
     , directory   >=1.2.5.0 && <1.4
     , filepath    >=1.4.2.1 && <1.6
-    , mtl         >=2.2.2 && <2.3.1
+    , mtl         >=2.2.2 && <2.4
     , process     ^>=1.6.13.2
 
   -- Only force new bytestring on versions of GHC that come bundled with it
