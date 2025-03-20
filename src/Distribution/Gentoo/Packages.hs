@@ -46,21 +46,20 @@ type Category = String
 type Pkg = String -- ^ Package name.
 type VerPkg = String -- ^ Package name with version.
 type VCatPkg = (Category, VerPkg)
-type Slot = String
 
 -- | When we are (re-)building packages, we don't care about the
 --   version, just the slot.
-data Package = Package Category Pkg (Maybe Slot)
+data Package = Package Category Pkg
              deriving(Eq, Ord, Show, Read)
 
 -- | Package equality, ignoring the Slot (i.e. same category and package
 --   name).
 samePackageAs :: Package -> Package -> Bool
-samePackageAs (Package c1 p1 _) (Package c2 p2 _)
+samePackageAs (Package c1 p1) (Package c2 p2)
   = c1 == c2 && p1 == p2
 
 ghcPkg :: Package
-ghcPkg = Package "dev-lang" "ghc" Nothing
+ghcPkg = Package "dev-lang" "ghc"
 
 -- | Return all packages that are not a version of GHC.
 notGHC :: S.Set Package -> S.Set Package
@@ -70,31 +69,12 @@ notGHC = S.filter (isNot ghcPkg)
 
 -- | Pretty-print the Package name based on how PMs expect it
 printPkg                 :: Package -> String
-printPkg (Package c p s) = addS cp
-  where
-    addS = maybe id (flip (++) . (:) ':') s
-    cp = c ++ '/' : p
+printPkg (Package c p) = c ++ '/' : p
 
 -- | Determine which slot the specific version of the package is in and
 --   create the appropriate Package value.
-toPackage           :: VCatPkg -> IO Package
-toPackage cp@(c,vp) = do sl <- getSlot cp
-                         let p = stripVersion vp
-                         return $ Package c p sl
-
--- | Determine which slot the specific version of the package is in.
-getSlot    :: VCatPkg -> IO (Maybe Slot)
-getSlot cp = do ex <- doesFileExist sFile
-                if ex
-                  then parse
-                  else return Nothing
-  where
-    sFile = pkgPath cp </> "SLOT"
-    -- EAPI=5 defines subslots
-    split_slot_subslot = break (== '/')
-    parse = do fl <- BS.unpack <$> BS.readFile sFile
-               -- Don't want the trailing newline
-               return $ listToMaybe $ map (fst . split_slot_subslot) $ lines fl
+toPackage           :: VCatPkg -> Package
+toPackage (c,vp) = Package c (stripVersion vp)
 
 -- | Remove the version information from the package name.
 stripVersion :: VerPkg -> Pkg
@@ -199,7 +179,7 @@ forPkg p = do
             packages <- filterM (isPackage . (cat,)) maybe_pkgs
             forM packages $ \pkg -> do
                 let cp = (cat, pkg)
-                cpn <- toPackage cp
+                    cpn = toPackage cp
                 cont <- parseContents cp
                 return $ p cpn cont
   where

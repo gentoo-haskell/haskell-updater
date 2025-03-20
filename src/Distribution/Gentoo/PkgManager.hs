@@ -298,7 +298,7 @@ usepkgExclude pkgs0
   where
     filteredPkgs = mapMaybe
         ( \case
-              Package "dev-haskell" _ _ -> Nothing
+              Package "dev-haskell" _ -> Nothing
               p -> Just $ printPkg p
         )
         (Set.toList pkgs)
